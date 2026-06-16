@@ -2,6 +2,27 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  * {
+    scrollbar-color: #34303f #111014;
+  }
+
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: #111014;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: #34303f;
+    border: 2px solid #111014;
+    border-radius: 999px;
+  }
+}
+
 @layer components {
   .app-shell {
     background:
