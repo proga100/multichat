@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Env / secrets — NEVER commit
+.env
+
+# SQLite database
+*.db
+
+# Node / frontend
+node_modules/
+dist/
+
+# Tool scratch
+.playwright-cli/
+
+# OS
+.DS_Store

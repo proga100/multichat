@@ -1,0 +1,16 @@
+# --- Web framework / server ---
+fastapi==0.137.1
+uvicorn[standard]==0.40.0       # ASGI server; [standard] pulls in websockets/httptools
+pydantic==2.13.0
+pydantic-settings==2.13.0       # loads .env into a typed Settings object (one config place)
+
+# --- Provider SDKs (official async clients only; never hand-roll HTTP) ---
+anthropic==0.109.2              # AsyncAnthropic
+openai==2.41.1                  # AsyncOpenAI
+google-genai==2.8.0             # client.aio.* for async (the newer unified Google SDK)
+
+# --- Telegram bot (step 8; long-polling, async) ---
+python-telegram-bot==22.6
+
+# --- Misc ---
+httpx==0.28.1                   # async HTTP (SDKs depend on it; pinned for reproducibility)
