@@ -10,12 +10,24 @@ from app.orchestrator.provider_stream import stream_provider_events
 from app.prompts.templates import DEBATE_CRITIQUE, DEBATE_ROUND1, DEBATE_SYNTHESIS
 
 
-def _format_answers(answers: dict[ProviderName, str], exclude: ProviderName | None = None) -> str:
+def _excerpt(content: str, max_chars: int) -> str:
+    text = " ".join(content.split())
+    if len(text) <= max_chars:
+        return text
+    return f"{text[: max_chars - 1].rstrip()}..."
+
+
+def _format_answers(
+    answers: dict[ProviderName, str],
+    exclude: ProviderName | None = None,
+    max_chars_per_answer: int = 1000,
+) -> str:
     blocks: list[str] = []
     for provider, content in answers.items():
         if provider == exclude:
             continue
-        blocks.append(f"{provider.value}:\n{content or '[no answer]'}")
+        formatted = _excerpt(content, max_chars_per_answer) if content else "[no answer]"
+        blocks.append(f"{provider.value}:\n{formatted}")
     return "\n\n".join(blocks)
 
 
@@ -31,8 +43,8 @@ def _messages_for_round(
             Message(Role.USER, prompt),
         ]
 
-    own_previous = previous_answers.get(provider, "")
-    others = _format_answers(previous_answers, exclude=provider)
+    own_previous = _excerpt(previous_answers.get(provider, ""), 900)
+    others = _format_answers(previous_answers, exclude=provider, max_chars_per_answer=900)
     return [
         Message(Role.SYSTEM, DEBATE_CRITIQUE.format(others=others)),
         Message(Role.USER, prompt),
@@ -127,7 +139,7 @@ async def stream_debate(
 
     synthesis_provider = ProviderName(settings.synthesis_provider)
     synthesis_round = rounds + 1
-    answers = _format_answers(previous_answers)
+    answers = _format_answers(previous_answers, max_chars_per_answer=1100)
     synthesis_messages = [
         Message(Role.SYSTEM, DEBATE_SYNTHESIS.format(answers=answers)),
         Message(Role.USER, prompt),

@@ -15,7 +15,10 @@ file just establishes the home for them.
 # --- DEBATE (parallel-rounds topology) -------------------------------------
 
 DEBATE_ROUND1 = (
-    "Answer the user's question directly and completely. Be concrete. "
+    "Answer the user's question directly and concretely. Be concise: give your "
+    "best answer, not an exhaustive report. Use readable Markdown with short "
+    "sections or bullets. Keep the answer under 350 words unless the user "
+    "explicitly asks for a long report. "
     "You are one of several independent models answering in parallel; you "
     "cannot see the others yet."
 )
@@ -23,9 +26,11 @@ DEBATE_ROUND1 = (
 # {others} = the other models' previous-round answers, formatted by orchestrator.
 DEBATE_CRITIQUE = (
     "Here are the other models' answers to the same question:\n\n{others}\n\n"
-    "Challenge their weakest points specifically. Then defend or revise your "
+    "Challenge only the most important weak points. Then defend or revise your "
     "own previous answer. Be direct about where they are wrong and where they "
-    "are right. Do not merely summarise — argue."
+    "are right. Do not merely summarize. Avoid repeating earlier content. Keep "
+    "this round under 300 words unless the user explicitly asks for a long "
+    "report."
 )
 
 # {answers} = all final-round answers, formatted by orchestrator.
@@ -33,7 +38,9 @@ DEBATE_SYNTHESIS = (
     "Below are the final answers from several models that debated this "
     "question:\n\n{answers}\n\nProduce ONE combined best answer. Explicitly "
     "note: (1) where they AGREED, (2) where they DISAGREED, and (3) your final "
-    "recommendation. Be decisive."
+    "recommendation. Remove duplication and keep only the strongest points. Be "
+    "decisive. Keep the synthesis under 550 words unless the user explicitly "
+    "asks for a long report."
 )
 
 # --- SUPER MIND (parallel answers + one unified response) -------------------

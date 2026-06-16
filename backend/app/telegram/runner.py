@@ -38,9 +38,19 @@ def _format_provider(provider: str) -> str:
     return labels.get(provider, provider)
 
 
-def _format_answers(answers: dict[str, str]) -> str:
+def _excerpt(content: str, max_chars: int) -> str:
+    text = " ".join(content.split())
+    if len(text) <= max_chars:
+        return text
+    return f"{text[: max_chars - 1].rstrip()}..."
+
+
+def _format_answers(answers: dict[str, str], max_chars_per_answer: int = 900) -> str:
     return "\n\n".join(
-        f"{_format_provider(provider)}:\n{content or '[no answer]'}"
+        (
+            f"{_format_provider(provider)}:\n"
+            f"{_excerpt(content, max_chars_per_answer) if content else '[no answer]'}"
+        )
         for provider, content in answers.items()
     )
 
