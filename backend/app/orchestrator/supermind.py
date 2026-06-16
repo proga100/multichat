@@ -50,6 +50,7 @@ async def stream_supermind(
         Message(Role.USER, prompt),
     ]
     synthesis_content: list[str] = []
+    synthesis_failed = False
 
     yield {
         "type": "synthesis_start",
@@ -79,8 +80,14 @@ async def stream_supermind(
             }
         elif event["type"] == "provider_done":
             continue
+        elif event["type"] == "error":
+            synthesis_failed = True
+            yield event
         else:
             yield event
+
+    if synthesis_failed:
+        return
 
     yield {
         "type": "synthesis_done",
@@ -109,6 +116,7 @@ async def stream_supermind(
         "round": scribe_round,
     }
 
+    scribe_failed = False
     async for event in stream_provider_events(
         synthesis_provider,
         scribe_messages,
@@ -131,8 +139,14 @@ async def stream_supermind(
             }
         elif event["type"] == "provider_done":
             continue
+        elif event["type"] == "error":
+            scribe_failed = True
+            yield event
         else:
             yield event
+
+    if scribe_failed:
+        return
 
     yield {
         "type": "scribe_done",
