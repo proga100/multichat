@@ -21,13 +21,14 @@ function createColumns() {
         model: "",
         fallbackProvider: null,
         fallbackReason: null,
+        usage: null,
       },
     ]),
   );
 }
 
 function createSynthesis() {
-  return { content: "", provider: "", fallbackProvider: null, fallbackReason: null };
+  return { content: "", provider: "", fallbackProvider: null, fallbackReason: null, usage: null };
 }
 
 function providerModel(health, provider) {
@@ -38,6 +39,46 @@ function providerModel(health, provider) {
 function ensureRound(rounds, roundNumber) {
   if (rounds[roundNumber]) return rounds;
   return { ...rounds, [roundNumber]: createColumns() };
+}
+
+function latestUserMessage(thread) {
+  if (!thread?.messages?.length) return "";
+  const userMessages = thread.messages.filter((message) => message.role === "user");
+  return userMessages[userMessages.length - 1]?.content || "";
+}
+
+function tokenText(promptTokens, outputTokens) {
+  if (promptTokens == null && outputTokens == null) return "tokens unavailable";
+  const prompt = promptTokens ?? 0;
+  const output = outputTokens ?? 0;
+  return `${prompt} in / ${output} out`;
+}
+
+function threadTokenTotals(thread) {
+  if (!thread?.messages?.length) return null;
+  let prompt = 0;
+  let output = 0;
+  let hasTokens = false;
+  for (const message of thread.messages) {
+    if (message.prompt_tokens != null) {
+      prompt += message.prompt_tokens;
+      hasTokens = true;
+    }
+    if (message.output_tokens != null) {
+      output += message.output_tokens;
+      hasTokens = true;
+    }
+  }
+  return hasTokens ? { prompt, output } : null;
+}
+
+async function copyText(text) {
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    // Clipboard can be blocked by browser permissions; the UI stays usable.
+  }
 }
 
 export default function App() {
@@ -59,6 +100,8 @@ export default function App() {
   const [awaitingHuman, setAwaitingHuman] = useState(null);
   const [humanSteer, setHumanSteer] = useState("");
   const [activeRun, setActiveRun] = useState(null);
+  const [lastPrompt, setLastPrompt] = useState("");
+  const [rerunningProvider, setRerunningProvider] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const streamRef = useRef(null);
@@ -85,6 +128,7 @@ export default function App() {
     setRunError(null);
     setAwaitingHuman(null);
     setHumanSteer("");
+    setRerunningProvider(null);
   }
 
   async function loadThreads() {
@@ -101,6 +145,7 @@ export default function App() {
     const thread = await response.json();
     setSelectedThread(thread);
     setMode(thread.mode);
+    setLastPrompt(latestUserMessage(thread));
     setPrompt("");
     resetRunState();
   }
@@ -108,6 +153,7 @@ export default function App() {
   function startNewThread() {
     setSelectedThread(null);
     setPrompt("");
+    setLastPrompt("");
     resetRunState();
   }
 
@@ -120,7 +166,8 @@ export default function App() {
     return values.length ? values : providerOrder;
   }
 
-  function startStream(run) {
+  function startStream(run, options = {}) {
+    const targetProvider = options.targetProvider || null;
     setIsStreaming(true);
     streamRef.current?.close();
     streamRef.current = openRunStream(
@@ -135,6 +182,8 @@ export default function App() {
           setDebateRounds((current) => ensureRound(current, event.round));
         },
         onDelta: (event) => {
+          if (targetProvider && event.provider !== targetProvider) return;
+
           if (run.mode === "debate") {
             setDebateRounds((current) => {
               const next = ensureRound(current, event.round);
@@ -205,6 +254,8 @@ export default function App() {
           ]);
         },
         onFallbackStart: (event) => {
+          if (targetProvider && event.provider !== targetProvider) return;
+
           if (run.mode === "debate" && event.round <= (run.rounds || roundCount)) {
             setDebateRounds((current) => {
               const next = ensureRound(current, event.round);
@@ -260,6 +311,8 @@ export default function App() {
           }));
         },
         onError: (event) => {
+          if (targetProvider && event.provider !== targetProvider) return;
+
           if (run.mode === "relay") {
             setRelayTranscript((current) => [
               ...current,
@@ -282,6 +335,8 @@ export default function App() {
           }));
         },
         onProviderDone: (event) => {
+          if (targetProvider && event.provider !== targetProvider) return;
+
           setColumns((current) => ({
             ...current,
             [event.provider]: {
@@ -296,38 +351,52 @@ export default function App() {
         onRunDone: () => {
           setIsStreaming(false);
           setIsLoading(false);
+          setRerunningProvider(null);
           loadThreads();
-          if (run.thread_id) loadThread(run.thread_id);
+          if (!targetProvider && run.thread_id) loadThread(run.thread_id);
         },
       },
     );
+  }
+
+  async function createRun({ runPrompt, runMode, runProvider, attachToThread = true }) {
+    const response = await fetch("/api/runs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        prompt: runPrompt,
+        mode: runMode,
+        provider: runProvider,
+        rounds: roundCount,
+        speaker_order: parsedSpeakerOrder(),
+        pause_between: pauseBetween,
+        thread_id: attachToThread ? selectedThread?.id || null : null,
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || "Request failed");
+    return data;
   }
 
   async function handleSubmit(event) {
     event.preventDefault();
     const trimmed = prompt.trim();
     if (!trimmed || isLoading || isStreaming) return;
+    await submitPrompt(trimmed);
+  }
 
+  async function submitPrompt(trimmed) {
     setIsLoading(true);
     setIsStreaming(false);
     resetRunState();
+    setLastPrompt(trimmed);
 
     try {
-      const response = await fetch("/api/runs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: trimmed,
-          mode,
-          provider,
-          rounds: roundCount,
-          speaker_order: parsedSpeakerOrder(),
-          pause_between: pauseBetween,
-          thread_id: selectedThread?.id || null,
-        }),
+      const data = await createRun({
+        runPrompt: trimmed,
+        runMode: mode,
+        runProvider: provider,
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.detail || "Request failed");
 
       setColumns((current) => {
         const next = { ...current };
@@ -342,6 +411,69 @@ export default function App() {
       setRunError(error.message || String(error));
       setIsLoading(false);
       setIsStreaming(false);
+    }
+  }
+
+  async function rerunProvider(providerName) {
+    const runPrompt = (prompt.trim() || lastPrompt || latestUserMessage(selectedThread)).trim();
+    if (!runPrompt || isLoading || isStreaming) return;
+
+    setRunError(null);
+    setIsLoading(true);
+    setRerunningProvider(providerName);
+    setLastPrompt(runPrompt);
+    setColumns((current) => ({
+      ...current,
+      [providerName]: {
+        ...createColumns()[providerName],
+        model: current[providerName]?.model || providerModel(health, providerName),
+      },
+    }));
+
+    try {
+      const data = await createRun({
+        runPrompt,
+        runMode: "single",
+        runProvider: providerName,
+        attachToThread: false,
+      });
+      setColumns((current) => ({
+        ...current,
+        [providerName]: {
+          ...current[providerName],
+          model:
+            data.providers?.find((item) => item.provider === providerName)?.model ||
+            data.model ||
+            current[providerName]?.model,
+        },
+      }));
+      setActiveRun(data);
+      startStream(data, { targetProvider: providerName });
+    } catch (error) {
+      setRunError(error.message || String(error));
+      setIsLoading(false);
+      setIsStreaming(false);
+      setRerunningProvider(null);
+    }
+  }
+
+  function editLastPrompt() {
+    const value = (lastPrompt || latestUserMessage(selectedThread)).trim();
+    if (value) setPrompt(value);
+  }
+
+  function rerunLastPrompt() {
+    const value = (prompt.trim() || lastPrompt || latestUserMessage(selectedThread)).trim();
+    if (value) {
+      setPrompt(value);
+      submitPrompt(value);
+    }
+  }
+
+  function handlePromptKeyDown(event) {
+    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+      event.preventDefault();
+      event.currentTarget.form?.requestSubmit();
     }
   }
 
@@ -381,7 +513,7 @@ export default function App() {
         <header className="flex flex-col gap-3 border-b border-neutral-800 pb-5 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">multichat</h1>
-            <p className="mt-1 text-sm text-neutral-400">Stage 7: thread persistence and reopen</p>
+            <p className="mt-1 text-sm text-neutral-400">Stage 10: daily-use controls</p>
           </div>
 
           <div className="rounded-md border border-neutral-800 px-3 py-2 text-sm">
@@ -391,7 +523,7 @@ export default function App() {
           </div>
         </header>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+        <form id="run-form" onSubmit={handleSubmit} className="flex flex-col gap-3">
           <div className="grid gap-3 md:grid-cols-4">
             <Control label="Mode" htmlFor="mode">
               <select id="mode" value={mode} onChange={(event) => setMode(event.target.value)} disabled={isLoading || isStreaming} className="control">
@@ -435,14 +567,23 @@ export default function App() {
             id="prompt"
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
+            onKeyDown={handlePromptKeyDown}
             placeholder="Ask the models..."
             className="min-h-32 resize-y rounded-md border border-neutral-800 bg-neutral-900 px-4 py-3 text-base text-neutral-100 outline-none transition focus:border-neutral-500"
           />
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             {runError ? <p className="text-sm text-red-300">{runError}</p> : <span className="text-sm text-neutral-500">{isStreaming ? "Streaming responses..." : awaitingHuman ? "Awaiting human steer" : "Ready"}</span>}
-            <button type="submit" disabled={isLoading || isStreaming || !prompt.trim()} className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-neutral-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-neutral-700 disabled:text-neutral-400">
-              {isStreaming ? "Streaming..." : isLoading ? "Starting..." : "Run"}
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" onClick={editLastPrompt} disabled={isLoading || isStreaming || !(lastPrompt || latestUserMessage(selectedThread))} className="rounded-md border border-neutral-700 px-3 py-2 text-sm text-neutral-200 transition hover:border-neutral-500 disabled:cursor-not-allowed disabled:text-neutral-600">
+                Edit last
+              </button>
+              <button type="button" onClick={rerunLastPrompt} disabled={isLoading || isStreaming || !(prompt.trim() || lastPrompt || latestUserMessage(selectedThread))} className="rounded-md border border-neutral-700 px-3 py-2 text-sm text-neutral-200 transition hover:border-neutral-500 disabled:cursor-not-allowed disabled:text-neutral-600">
+                Rerun
+              </button>
+              <button type="submit" disabled={isLoading || isStreaming || !prompt.trim()} title="Run" className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-neutral-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-neutral-700 disabled:text-neutral-400">
+                {isStreaming ? "Streaming..." : isLoading ? "Starting..." : "Run"}
+              </button>
+            </div>
           </div>
         </form>
 
@@ -457,13 +598,22 @@ export default function App() {
         )}
 
         {mode === "debate" ? (
-          <DebateView rounds={debateRounds} synthesis={synthesis} health={health} />
+          <DebateView rounds={debateRounds} synthesis={synthesis} health={health} onCopy={copyText} />
         ) : mode === "relay" ? (
-          <RelayView transcript={relayTranscript} />
+          <RelayView transcript={relayTranscript} onCopy={copyText} />
         ) : (
-          <ColumnGrid providers={activeProviders} columns={columns} health={health} isLoading={isLoading} isStreaming={isStreaming} />
+          <ColumnGrid
+            providers={activeProviders}
+            columns={columns}
+            health={health}
+            isLoading={isLoading}
+            isStreaming={isStreaming}
+            onCopy={copyText}
+            onRerun={rerunProvider}
+            rerunningProvider={rerunningProvider}
+          />
         )}
-        {selectedThread && <HistoryView thread={selectedThread} />}
+        {selectedThread && <HistoryView thread={selectedThread} onCopy={copyText} onEditLast={editLastPrompt} onRerunLast={rerunLastPrompt} />}
         </main>
       </div>
     </div>
@@ -513,25 +663,47 @@ function ThreadSidebar({ threads, selectedThreadId, onSelect, onNew }) {
   );
 }
 
-function HistoryView({ thread }) {
+function HistoryView({ thread, onCopy, onEditLast, onRerunLast }) {
+  const totals = threadTokenTotals(thread);
   return (
     <section className="space-y-3 border-t border-neutral-800 pt-5">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
-        Thread history
-      </h2>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
+            Thread history
+          </h2>
+          <p className="mt-1 text-xs text-neutral-500">
+            {totals ? tokenText(totals.prompt, totals.output) : "tokens unavailable"}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={onEditLast} className="rounded-md border border-neutral-700 px-2 py-1 text-xs text-neutral-200 hover:border-neutral-500">
+            Edit last
+          </button>
+          <button type="button" onClick={onRerunLast} className="rounded-md border border-neutral-700 px-2 py-1 text-xs text-neutral-200 hover:border-neutral-500">
+            Rerun
+          </button>
+        </div>
+      </div>
       {thread.messages.map((message) => (
         <article
           key={message.id}
           className="rounded-lg border border-neutral-800 bg-neutral-900/40 p-3"
         >
-          <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-neutral-500">
-            <span className="font-semibold uppercase text-neutral-300">
-              {message.provider
-                ? providerLabels[message.provider] || message.provider
-                : message.role}
-            </span>
-            {message.model && <span>{message.model}</span>}
-            {message.round !== null && <span>round {message.round}</span>}
+          <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-500">
+              <span className="font-semibold uppercase text-neutral-300">
+                {message.provider
+                  ? providerLabels[message.provider] || message.provider
+                  : message.role}
+              </span>
+              {message.model && <span>{message.model}</span>}
+              {message.round !== null && <span>round {message.round}</span>}
+              <span>{tokenText(message.prompt_tokens, message.output_tokens)}</span>
+            </div>
+            <button type="button" onClick={() => onCopy(message.content)} disabled={!message.content} className="self-start rounded-md border border-neutral-700 px-2 py-1 text-xs text-neutral-200 hover:border-neutral-500 disabled:cursor-not-allowed disabled:text-neutral-600">
+              Copy
+            </button>
           </div>
           <p className="whitespace-pre-wrap text-sm leading-6 text-neutral-100">
             {message.content}
@@ -563,23 +735,68 @@ function ProviderSelect({ provider, setProvider, disabled }) {
   );
 }
 
-function ColumnGrid({ providers, columns, health, isLoading, isStreaming }) {
+function ColumnGrid({
+  providers,
+  columns,
+  health,
+  isLoading,
+  isStreaming,
+  onCopy,
+  onRerun,
+  rerunningProvider,
+}) {
   return (
     <section className="grid min-h-64 grid-cols-1 gap-4 lg:grid-cols-3">
       {providers.map((providerName) => (
-        <ProviderCard key={providerName} providerName={providerName} column={columns[providerName]} health={health} isLoading={isLoading} isStreaming={isStreaming} />
+        <ProviderCard
+          key={providerName}
+          providerName={providerName}
+          column={columns[providerName]}
+          health={health}
+          isLoading={isLoading}
+          isStreaming={isStreaming}
+          onCopy={onCopy}
+          onRerun={onRerun}
+          isRerunning={rerunningProvider === providerName}
+        />
       ))}
     </section>
   );
 }
 
-function ProviderCard({ providerName, column, health, isLoading, isStreaming }) {
+function ProviderCard({
+  providerName,
+  column,
+  health,
+  isLoading,
+  isStreaming,
+  onCopy,
+  onRerun,
+  isRerunning,
+}) {
   const hasContent = Boolean(column.content);
   return (
     <article className="min-h-64 rounded-lg border border-neutral-800 bg-neutral-900/60 p-4">
-      <div className="mb-3 flex items-center justify-between gap-3 border-b border-neutral-800 pb-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-300">{providerLabels[providerName]}</h2>
-        <span className="text-xs text-neutral-500">{column.model || providerModel(health, providerName)}</span>
+      <div className="mb-3 flex flex-col gap-3 border-b border-neutral-800 pb-3">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-300">{providerLabels[providerName]}</h2>
+          <span className="text-xs text-neutral-500">{column.model || providerModel(health, providerName)}</span>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs text-neutral-500">
+            {column.usage ? tokenText(column.usage.prompt_tokens, column.usage.output_tokens) : "tokens unavailable"}
+          </span>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => onCopy?.(column.content)} disabled={!hasContent} className="rounded-md border border-neutral-700 px-2 py-1 text-xs text-neutral-200 hover:border-neutral-500 disabled:cursor-not-allowed disabled:text-neutral-600">
+              Copy
+            </button>
+            {onRerun && (
+              <button type="button" onClick={() => onRerun(providerName)} disabled={isLoading || isStreaming} className="rounded-md border border-neutral-700 px-2 py-1 text-xs text-neutral-200 hover:border-neutral-500 disabled:cursor-not-allowed disabled:text-neutral-600">
+                {isRerunning ? "Rerun..." : "Rerun"}
+              </button>
+            )}
+          </div>
+        </div>
       </div>
       <FallbackBadge column={column} />
       {column.error && <p className="whitespace-pre-wrap text-sm text-red-300">{column.error}</p>}
@@ -599,20 +816,25 @@ function FallbackBadge({ column }) {
   );
 }
 
-function DebateView({ rounds, synthesis, health }) {
+function DebateView({ rounds, synthesis, health, onCopy }) {
   const roundKeys = Object.keys(rounds).map(Number).sort((a, b) => a - b);
   return (
     <div className="space-y-6">
       {roundKeys.map((round) => (
         <section key={round} className="space-y-3">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">Round {round}</h2>
-          <ColumnGrid providers={providerOrder} columns={rounds[round]} health={health} isLoading={false} isStreaming={false} />
+          <ColumnGrid providers={providerOrder} columns={rounds[round]} health={health} isLoading={false} isStreaming={false} onCopy={onCopy} />
         </section>
       ))}
       <section className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4">
-        <div className="mb-3 flex items-center justify-between border-b border-emerald-500/20 pb-3">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-emerald-200">Synthesis</h2>
-          <span className="text-xs text-emerald-200/70">{providerLabels[synthesis.provider] || synthesis.provider}</span>
+        <div className="mb-3 flex flex-col gap-3 border-b border-emerald-500/20 pb-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-emerald-200">Synthesis</h2>
+            <span className="text-xs text-emerald-200/70">{providerLabels[synthesis.provider] || synthesis.provider}</span>
+          </div>
+          <button type="button" onClick={() => onCopy?.(synthesis.content)} disabled={!synthesis.content} className="rounded-md border border-emerald-500/30 px-2 py-1 text-xs text-emerald-100 hover:border-emerald-300 disabled:cursor-not-allowed disabled:text-emerald-900">
+            Copy
+          </button>
         </div>
         <FallbackBadge column={synthesis} />
         {synthesis.content ? <p className="whitespace-pre-wrap text-sm leading-6 text-neutral-100">{synthesis.content}</p> : <p className="text-sm text-neutral-400">Synthesis will appear here.</p>}
@@ -621,13 +843,18 @@ function DebateView({ rounds, synthesis, health }) {
   );
 }
 
-function RelayView({ transcript }) {
+function RelayView({ transcript, onCopy }) {
   return (
     <section className="space-y-3">
       {transcript.length === 0 && <p className="text-sm text-neutral-500">Relay transcript will appear here.</p>}
       {transcript.map((item, index) => (
         <article key={`${item.provider}-${item.speakerIndex}-${index}`} className="rounded-lg border border-neutral-800 bg-neutral-900/60 p-4">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-300">{providerLabels[item.provider] || item.provider}</h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-300">{providerLabels[item.provider] || item.provider}</h2>
+            <button type="button" onClick={() => onCopy?.(item.content)} disabled={!item.content} className="rounded-md border border-neutral-700 px-2 py-1 text-xs text-neutral-200 hover:border-neutral-500 disabled:cursor-not-allowed disabled:text-neutral-600">
+              Copy
+            </button>
+          </div>
           <FallbackBadge column={item} />
           <p className={`mt-3 whitespace-pre-wrap text-sm leading-6 ${item.error ? "text-red-300" : "text-neutral-100"}`}>{item.content || "Waiting for stream..."}</p>
         </article>

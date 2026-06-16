@@ -6,8 +6,8 @@ have them critique each other across rounds and synthesize a final answer
 (**Debate**). BYOK — your own API keys, in a local `.env`. Single user, no auth,
 runs on your Mac.
 
-> Status: **Stage 8 complete.** Compare, single-provider streaming, debate,
-> relay, persisted thread reopen, and the local Telegram bot front-end are
+> Status: **Stage 10 complete.** Compare, single-provider streaming, debate,
+> relay, persisted thread reopen, Telegram, and daily-use UI controls are
 > implemented.
 
 ## Architecture (the part that matters)
@@ -153,4 +153,5 @@ stop."* Codex works stage by stage, running each stage's acceptance checks.
 7. SQLite persistence + thread list / reopen. ✅
 8. Telegram bot front-end (long-polling, your-user-only). ✅
 9. *(optional)* Mac packaging (menu-bar or Tauri).
+10. Ergonomics: keyboard send, copy, rerun, and token metadata. ✅
 ```
