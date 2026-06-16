@@ -45,7 +45,7 @@ def _excerpt(content: str, max_chars: int) -> str:
     return f"{text[: max_chars - 1].rstrip()}..."
 
 
-def _format_answers(answers: dict[str, str], max_chars_per_answer: int = 900) -> str:
+def _format_answers(answers: dict[str, str], max_chars_per_answer: int = 500) -> str:
     return "\n\n".join(
         (
             f"{_format_provider(provider)}:\n"

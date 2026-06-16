@@ -9,6 +9,11 @@ from app.orchestrator.compare import COMPARE_PROVIDERS
 from app.orchestrator.provider_stream import stream_provider_events
 from app.prompts.templates import DEBATE_CRITIQUE, DEBATE_ROUND1, DEBATE_SYNTHESIS
 
+DEBATE_ROUND1_MAX_CHARS = 900
+DEBATE_CRITIQUE_MAX_CHARS = 600
+DEBATE_SYNTHESIS_MAX_CHARS = 1000
+TRIM_NOTICE = "\n\n[Trimmed for length.]"
+
 
 def _excerpt(content: str, max_chars: int) -> str:
     text = " ".join(content.split())
@@ -31,6 +36,25 @@ def _format_answers(
     return "\n\n".join(blocks)
 
 
+def _round_output_limit(round_number: int) -> int:
+    if round_number <= 1:
+        return DEBATE_ROUND1_MAX_CHARS
+    return DEBATE_CRITIQUE_MAX_CHARS
+
+
+def _limit_delta(delta: str, emitted_chars: int, max_chars: int) -> tuple[str, bool]:
+    remaining = max_chars - emitted_chars
+    if remaining <= 0:
+        return "", True
+    if len(delta) <= remaining:
+        return delta, False
+
+    trimmed = delta[:remaining].rstrip()
+    if trimmed:
+        trimmed = f"{trimmed}{TRIM_NOTICE}"
+    return trimmed, True
+
+
 def _messages_for_round(
     prompt: str,
     provider: ProviderName,
@@ -43,8 +67,8 @@ def _messages_for_round(
             Message(Role.USER, prompt),
         ]
 
-    own_previous = _excerpt(previous_answers.get(provider, ""), 900)
-    others = _format_answers(previous_answers, exclude=provider, max_chars_per_answer=900)
+    own_previous = _excerpt(previous_answers.get(provider, ""), 500)
+    others = _format_answers(previous_answers, exclude=provider, max_chars_per_answer=500)
     return [
         Message(Role.SYSTEM, DEBATE_CRITIQUE.format(others=others)),
         Message(Role.USER, prompt),
@@ -61,10 +85,37 @@ async def _stream_debate_provider(
     queue: asyncio.Queue[dict[str, object]],
 ) -> None:
     content: list[str] = []
+    emitted_chars = 0
+    max_chars = _round_output_limit(round_number)
+    trimmed_for_length = False
+    fallback_provider: str | None = None
+
     async for event in stream_provider_events(provider, messages, premium, round_number):
+        if "fallback_provider" in event:
+            fallback_provider = str(event["fallback_provider"])
+
         if event["type"] == "delta":
-            content.append(str(event["delta"]))
+            delta, should_stop = _limit_delta(str(event["delta"]), emitted_chars, max_chars)
+            if delta:
+                content.append(delta)
+                emitted_chars += len(delta)
+                await queue.put({**event, "delta": delta})
+            if should_stop:
+                trimmed_for_length = True
+                break
+            continue
+
         await queue.put(event)
+
+    if trimmed_for_length:
+        done_event: dict[str, object] = {
+            "type": "provider_done",
+            "provider": provider.value,
+            "round": round_number,
+        }
+        if fallback_provider is not None:
+            done_event["fallback_provider"] = fallback_provider
+        await queue.put(done_event)
 
     await queue.put(
         {
@@ -139,7 +190,7 @@ async def stream_debate(
 
     synthesis_provider = ProviderName(settings.synthesis_provider)
     synthesis_round = rounds + 1
-    answers = _format_answers(previous_answers, max_chars_per_answer=1100)
+    answers = _format_answers(previous_answers, max_chars_per_answer=650)
     synthesis_messages = [
         Message(Role.SYSTEM, DEBATE_SYNTHESIS.format(answers=answers)),
         Message(Role.USER, prompt),
@@ -159,7 +210,14 @@ async def stream_debate(
         synthesis_round,
     ):
         if event["type"] == "delta":
-            delta = str(event["delta"])
+            raw_delta = str(event["delta"])
+            delta, should_stop = _limit_delta(
+                raw_delta,
+                sum(len(part) for part in synthesis_content),
+                DEBATE_SYNTHESIS_MAX_CHARS,
+            )
+            if not delta and should_stop:
+                break
             synthesis_content.append(delta)
             yield {
                 "type": "synthesis_delta",
@@ -172,6 +230,8 @@ async def stream_debate(
                     else {}
                 ),
             }
+            if should_stop:
+                break
         elif event["type"] == "provider_done":
             continue
         else:
