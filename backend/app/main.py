@@ -23,6 +23,7 @@ from app.api.runs import router as runs_router
 from app.api.threads import router as threads_router
 from app.core.config import settings
 from app.core.db import init_db
+from app.telegram.bot import start_telegram_bot
 
 
 @contextlib.asynccontextmanager
@@ -30,23 +31,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # --- startup ---
     init_db()
 
-    # Telegram long-polling task (step 8). We launch it here so the bot lives in
-    # the same process/event loop as the API and shares the DB. Kept inert until
-    # a token is configured, so the app runs fine before step 8 exists.
-    telegram_task = None
-    if settings.telegram_bot_token:
-        # from app.telegram.bot import run_polling
-        # telegram_task = asyncio.create_task(run_polling())
-        pass
+    # The Telegram app uses official async long-polling and stays inert unless
+    # TELEGRAM_BOT_TOKEN plus TELEGRAM_ALLOWED_USER_ID are configured.
+    telegram_bot = await start_telegram_bot()
 
     try:
         yield
     finally:
         # --- shutdown ---
-        if telegram_task is not None:
-            telegram_task.cancel()
+        if telegram_bot is not None:
             with contextlib.suppress(Exception):
-                await telegram_task
+                await telegram_bot.stop()
 
 
 app = FastAPI(title="multichat", lifespan=lifespan)

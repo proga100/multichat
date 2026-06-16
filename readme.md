@@ -6,9 +6,9 @@ have them critique each other across rounds and synthesize a final answer
 (**Debate**). BYOK — your own API keys, in a local `.env`. Single user, no auth,
 runs on your Mac.
 
-> Status: **Step 1 — scaffold only.** The provider implementations, streaming,
-> and the two modes are built in later steps. Right now you can run both halves
-> and confirm the frontend talks to the backend.
+> Status: **Stage 8 complete.** Compare, single-provider streaming, debate,
+> relay, persisted thread reopen, and the local Telegram bot front-end are
+> implemented.
 
 ## Architecture (the part that matters)
 
@@ -48,8 +48,9 @@ multichat/
 │       │   ├── anthropic_provider.py  # stub -> implemented step 2/3
 │       │   ├── openai_provider.py     # stub -> implemented step 4
 │       │   └── gemini_provider.py     # stub -> implemented step 4
-│       ├── orchestrator/     # compare/debate loops (step 5/6)
-│       ├── api/              # run + SSE endpoints (step 2/3)
+│       ├── orchestrator/     # compare/debate/relay loops
+│       ├── api/              # run, SSE, and thread endpoints
+│       ├── telegram/         # long-polling Telegram front-end
 │       └── prompts/
 │           └── templates.py  # editable mode/role prompts
 └── frontend/
@@ -110,12 +111,22 @@ edit the `*_MODEL_DEFAULT` / `*_MODEL_PREMIUM` values — that's the single plac
 Model names are starting points; confirm them against each provider's current
 docs before first real use.
 
+For Telegram, create a bot with `@BotFather`, set `TELEGRAM_BOT_TOKEN`, and set
+`TELEGRAM_ALLOWED_USER_ID` to your numeric Telegram user id. The bot ignores all
+other users. Supported messages:
+
+```text
+compare: your prompt
+debate 2: your prompt
+relay: your prompt
+```
+
 ## Deployment
 
-Mac-hosted: the API, providers, SQLite, and (later) the Telegram bot all run as
-one local process on your Mac. A Telegram bot front-end (step 8) lets you
-trigger discussions from your phone — it works whenever your Mac is awake and
-the app is running. No server, no public URL; keys stay in your local `.env`.
+Mac-hosted: the API, providers, SQLite, and Telegram bot all run as one local
+process on your Mac. The Telegram front-end lets you trigger discussions from
+your phone whenever your Mac is awake and the app is running. No server, no
+public URL; keys stay in your local `.env`.
 
 ## Building with Codex
 
@@ -133,13 +144,13 @@ stop."* Codex works stage by stage, running each stage's acceptance checks.
 
 ## Build order
 
-1. **Scaffold** (this) — structure, deps, config, run instructions. ✅
-2. `BaseProvider` + `AnthropicProvider`, non-streaming: one prompt, one answer.
-3. SSE streaming for Anthropic; single column streams live.
-4. Add `OpenAIProvider` + `GeminiProvider` behind the same interface.
-5. **Compare mode**: three concurrent streaming columns.
-6. **Debate mode**: rounds + cross-model context injection + synthesis.
-7. SQLite persistence + thread list / reopen.
-8. Telegram bot front-end (long-polling, your-user-only).
+1. **Scaffold** — structure, deps, config, run instructions. ✅
+2. `BaseProvider` + `AnthropicProvider`, non-streaming: one prompt, one answer. ✅
+3. SSE streaming for Anthropic; single column streams live. ✅
+4. Add `OpenAIProvider` + `GeminiProvider` behind the same interface. ✅
+5. **Compare mode**: three concurrent streaming columns. ✅
+6. **Debate mode**: rounds + cross-model context injection + synthesis. ✅
+7. SQLite persistence + thread list / reopen. ✅
+8. Telegram bot front-end (long-polling, your-user-only). ✅
 9. *(optional)* Mac packaging (menu-bar or Tauri).
 ```
