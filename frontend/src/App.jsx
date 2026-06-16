@@ -368,6 +368,15 @@ export default function App() {
             fallbackProvider: event.fallback_provider || current.fallbackProvider,
           }));
         },
+        onSynthesisDone: (event) => {
+          if (!event.content) return;
+          setSynthesis((current) => ({
+            ...current,
+            provider: event.provider || current.provider,
+            content: current.content || event.content,
+            error: null,
+          }));
+        },
         onScribeStart: (event) => {
           setScribe((current) => ({ ...current, provider: event.provider }));
         },
@@ -377,6 +386,15 @@ export default function App() {
             provider: event.provider,
             content: current.content + event.delta,
             fallbackProvider: event.fallback_provider || current.fallbackProvider,
+          }));
+        },
+        onScribeDone: (event) => {
+          if (!event.content) return;
+          setScribe((current) => ({
+            ...current,
+            provider: event.provider || current.provider,
+            content: current.content || event.content,
+            error: null,
           }));
         },
         onRelaySpeakerStart: (event) => {

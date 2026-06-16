@@ -194,11 +194,12 @@ async def stream_run(run_id: int, request: Request) -> StreamingResponse:
                     synthesis_provider = str(event["provider"])
                 elif event_type == "synthesis_done":
                     provider = synthesis_provider or str(event["provider"])
+                    content = "".join(synthesis) or str(event.get("content", ""))
                     persist_assistant_message(
                         thread_id=run_id,
                         provider=provider,
                         model=resolve_model(ProviderName(provider), False),
-                        content="".join(synthesis),
+                        content=content,
                         round_number=int(event["round"]),
                     )
 
@@ -246,11 +247,12 @@ async def stream_run(run_id: int, request: Request) -> StreamingResponse:
                     scribe_provider = str(event["provider"])
                 elif event_type == "scribe_done":
                     provider = scribe_provider or str(event["provider"])
+                    content = "".join(scribe) or str(event.get("content", ""))
                     persist_assistant_message(
                         thread_id=run_id,
                         provider="scribe",
                         model=resolve_model(ProviderName(provider), False),
-                        content="".join(scribe),
+                        content=content,
                         round_number=int(event["round"]),
                     )
 
