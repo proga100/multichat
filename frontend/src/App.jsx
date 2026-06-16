@@ -11,6 +11,37 @@ const providerLabels = {
   scribe: "Scribe",
 };
 
+const providerMeta = {
+  anthropic: {
+    initial: "A",
+    tone: "border-orange-300/40 bg-orange-300/10 text-orange-100",
+    dot: "bg-orange-300",
+  },
+  openai: {
+    initial: "O",
+    tone: "border-emerald-300/40 bg-emerald-300/10 text-emerald-100",
+    dot: "bg-emerald-300",
+  },
+  gemini: {
+    initial: "G",
+    tone: "border-sky-300/40 bg-sky-300/10 text-sky-100",
+    dot: "bg-sky-300",
+  },
+  scribe: {
+    initial: "S",
+    tone: "border-violet-300/40 bg-violet-300/10 text-violet-100",
+    dot: "bg-violet-300",
+  },
+};
+
+const modeOptions = [
+  { value: "compare", label: "Compare", description: "side-by-side answers" },
+  { value: "supermind", label: "Super Mind", description: "unified + individual" },
+  { value: "debate", label: "Debate", description: "rounds + verdict" },
+  { value: "relay", label: "Relay", description: "sequential handoff" },
+  { value: "single", label: "Single", description: "one provider" },
+];
+
 function createColumns() {
   return Object.fromEntries(
     providerOrder.map((provider) => [
@@ -360,7 +391,7 @@ export default function App() {
     fetch("/health")
       .then((r) => r.json())
       .then(setHealth)
-      .catch((e) => setHealthError(String(e)));
+      .catch(() => setHealthError("Backend offline"));
     loadThreads();
   }, []);
 
@@ -887,6 +918,14 @@ export default function App() {
     }
   }
 
+  function runStatusLabel() {
+    if (runError) return runError;
+    if (isStreaming) return "Streaming responses";
+    if (awaitingHuman) return "Awaiting human steer";
+    if (selectedThread) return `Thread #${selectedThread.id}`;
+    return "Ready";
+  }
+
   async function handleContinue(event) {
     event.preventDefault();
     if (!activeRun || !awaitingHuman || isStreaming) return;
@@ -910,8 +949,8 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100">
-      <div className="mx-auto grid min-h-screen w-full max-w-[1500px] gap-6 px-5 py-6 lg:grid-cols-[280px_minmax(0,1fr)] lg:px-8">
+    <div className="app-shell min-h-screen text-neutral-100">
+      <div className="mx-auto grid min-h-screen w-full max-w-[1540px] gap-5 px-4 py-4 lg:grid-cols-[300px_minmax(0,1fr)] lg:px-6">
         <ThreadSidebar
           threads={threads}
           selectedThreadId={selectedThread?.id}
@@ -919,55 +958,48 @@ export default function App() {
           onNew={startNewThread}
         />
 
-        <main className="flex min-w-0 flex-col gap-6">
-        <header className="flex flex-col gap-3 border-b border-neutral-800 pb-5 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">multichat</h1>
-            <p className="mt-1 text-sm text-neutral-400">Self-hosted AI boardroom</p>
+        <main className="flex min-w-0 flex-col gap-5">
+        <header className="panel flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <div className="flex items-center gap-3">
+              <div className="grid h-10 w-10 place-items-center rounded-md border border-violet-400/30 bg-violet-400/10 text-sm font-black text-violet-100">
+                M
+              </div>
+              <div className="min-w-0">
+                <h1 className="text-xl font-semibold tracking-tight">multichat</h1>
+                <p className="mt-0.5 text-sm text-neutral-400">Multi-model decision workspace</p>
+              </div>
+            </div>
           </div>
 
-          <div className="rounded-md border border-neutral-800 px-3 py-2 text-sm">
-            {healthError && <span className="text-red-400">Backend offline ({healthError})</span>}
+          <div className="flex flex-wrap items-center gap-2">
+            <ProviderStrip health={health} />
+            <div className="rounded-md border border-neutral-800 bg-neutral-950/70 px-3 py-2 text-sm">
+            {healthError && <span className="text-red-400">{healthError}</span>}
             {!healthError && !health && <span className="text-neutral-400">Checking backend...</span>}
             {health && <span className="text-emerald-400">● connected</span>}
+            </div>
           </div>
         </header>
 
-        <form id="run-form" onSubmit={handleSubmit} className="flex flex-col gap-3">
-          <div className="grid gap-3 md:grid-cols-4">
-            <Control label="Mode" htmlFor="mode">
-              <select id="mode" value={mode} onChange={(event) => setMode(event.target.value)} disabled={isLoading || isStreaming} className="control">
-                <option value="compare">Compare</option>
-                <option value="supermind">Super Mind</option>
-                <option value="single">Single provider</option>
-                <option value="debate">Debate</option>
-                <option value="relay">Relay</option>
-              </select>
-            </Control>
-
-            {mode === "single" && (
-              <ProviderSelect provider={provider} setProvider={setProvider} disabled={isLoading || isStreaming} />
-            )}
-
-            {mode === "debate" && (
-              <Control label="Rounds" htmlFor="rounds">
-                <input id="rounds" type="number" min="1" max="5" value={roundCount} onChange={(event) => setRoundCount(Number(event.target.value))} disabled={isLoading || isStreaming} className="control" />
-              </Control>
-            )}
-
-            {mode === "relay" && (
-              <>
-                <Control label="Speaker order" htmlFor="speaker-order">
-                  <input id="speaker-order" value={speakerOrder} onChange={(event) => setSpeakerOrder(event.target.value)} disabled={isLoading || isStreaming} className="control" />
-                </Control>
-                <label className="flex items-end gap-2 pb-2 text-sm text-neutral-300">
-                  <input type="checkbox" checked={pauseBetween} onChange={(event) => setPauseBetween(event.target.checked)} disabled={isLoading || isStreaming} />
-                  Pause between speakers
-                </label>
-              </>
-            )}
+        <form id="run-form" onSubmit={handleSubmit} className="panel flex flex-col gap-4 p-4">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+            <ModePicker mode={mode} setMode={setMode} disabled={isLoading || isStreaming} />
+            <ModeSettings
+              mode={mode}
+              provider={provider}
+              setProvider={setProvider}
+              roundCount={roundCount}
+              setRoundCount={setRoundCount}
+              speakerOrder={speakerOrder}
+              setSpeakerOrder={setSpeakerOrder}
+              pauseBetween={pauseBetween}
+              setPauseBetween={setPauseBetween}
+              disabled={isLoading || isStreaming}
+            />
           </div>
 
+          <div className="flex flex-col gap-2">
           <label htmlFor="prompt" className="text-sm font-medium text-neutral-300">Prompt</label>
           {selectedThread && (
             <p className="text-xs text-neutral-500">
@@ -980,18 +1012,21 @@ export default function App() {
             onChange={(event) => setPrompt(event.target.value)}
             onKeyDown={handlePromptKeyDown}
             placeholder="Ask the models..."
-            className="min-h-32 resize-y rounded-md border border-neutral-800 bg-neutral-900 px-4 py-3 text-base text-neutral-100 outline-none transition focus:border-neutral-500"
+            className="min-h-28 resize-y rounded-md border border-neutral-800 bg-neutral-950/80 px-4 py-3 text-base text-neutral-100 outline-none transition placeholder:text-neutral-600 focus:border-violet-400/70"
           />
+          </div>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            {runError ? <p className="text-sm text-red-300">{runError}</p> : <span className="text-sm text-neutral-500">{isStreaming ? "Streaming responses..." : awaitingHuman ? "Awaiting human steer" : "Ready"}</span>}
+            <span className={`text-sm ${runError ? "text-red-300" : "text-neutral-500"}`}>
+              {runStatusLabel()}
+            </span>
             <div className="flex flex-wrap items-center gap-2">
-              <button type="button" onClick={editLastPrompt} disabled={isLoading || isStreaming || !(lastPrompt || latestUserMessage(selectedThread))} className="rounded-md border border-neutral-700 px-3 py-2 text-sm text-neutral-200 transition hover:border-neutral-500 disabled:cursor-not-allowed disabled:text-neutral-600">
+              <button type="button" onClick={editLastPrompt} disabled={isLoading || isStreaming || !(lastPrompt || latestUserMessage(selectedThread))} className="secondary-button">
                 Edit last
               </button>
-              <button type="button" onClick={rerunLastPrompt} disabled={isLoading || isStreaming || !(prompt.trim() || lastPrompt || latestUserMessage(selectedThread))} className="rounded-md border border-neutral-700 px-3 py-2 text-sm text-neutral-200 transition hover:border-neutral-500 disabled:cursor-not-allowed disabled:text-neutral-600">
+              <button type="button" onClick={rerunLastPrompt} disabled={isLoading || isStreaming || !(prompt.trim() || lastPrompt || latestUserMessage(selectedThread))} className="secondary-button">
                 Rerun
               </button>
-              <button type="submit" disabled={isLoading || isStreaming || !prompt.trim()} title="Run" className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-neutral-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-neutral-700 disabled:text-neutral-400">
+              <button type="submit" disabled={isLoading || isStreaming || !prompt.trim()} title="Run" className="primary-button">
                 {isStreaming ? "Streaming..." : isLoading ? "Starting..." : "Run"}
               </button>
             </div>
@@ -1045,15 +1080,18 @@ export default function App() {
 
 function ThreadSidebar({ threads, selectedThreadId, onSelect, onNew }) {
   return (
-    <aside className="rounded-lg border border-neutral-800 bg-neutral-900/50 p-3 lg:sticky lg:top-6 lg:h-[calc(100vh-48px)] lg:overflow-y-auto">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
-          Threads
-        </h2>
+    <aside className="panel p-3 lg:sticky lg:top-4 lg:h-[calc(100vh-32px)] lg:overflow-y-auto">
+      <div className="mb-4 flex items-center justify-between gap-2 border-b border-neutral-800 pb-3">
+        <div>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
+            Threads
+          </h2>
+          <p className="mt-1 text-xs text-neutral-600">{threads.length} saved conversations</p>
+        </div>
         <button
           type="button"
           onClick={onNew}
-          className="rounded-md border border-neutral-700 px-2 py-1 text-xs text-neutral-200 hover:border-neutral-500"
+          className="secondary-button px-2 py-1 text-xs"
         >
           New
         </button>
@@ -1067,17 +1105,17 @@ function ThreadSidebar({ threads, selectedThreadId, onSelect, onNew }) {
             key={thread.id}
             type="button"
             onClick={() => onSelect(thread.id)}
-            className={`w-full rounded-md border p-2 text-left text-sm transition ${
+            className={`w-full rounded-md border p-3 text-left text-sm transition ${
               selectedThreadId === thread.id
-                ? "border-emerald-500/60 bg-emerald-500/10"
-                : "border-neutral-800 bg-neutral-950/40 hover:border-neutral-600"
+                ? "border-violet-300/60 bg-violet-400/10"
+                : "border-neutral-800 bg-neutral-950/55 hover:border-neutral-600"
             }`}
           >
-            <span className="block truncate font-medium text-neutral-200">
+            <span className="line-clamp-2 font-medium leading-5 text-neutral-200">
               {thread.title || `Thread ${thread.id}`}
             </span>
-            <span className="mt-1 block truncate text-xs text-neutral-500">
-              {thread.mode} · {thread.message_count} messages
+            <span className="mt-2 inline-flex rounded border border-neutral-800 bg-neutral-950/60 px-1.5 py-0.5 text-[11px] uppercase tracking-wide text-neutral-500">
+              {thread.mode} · {thread.message_count}
             </span>
           </button>
         ))}
@@ -1156,6 +1194,124 @@ function ProviderSelect({ provider, setProvider, disabled }) {
   );
 }
 
+function ProviderStrip({ health }) {
+  return (
+    <div className="hidden items-center gap-1 rounded-md border border-neutral-800 bg-neutral-950/70 p-1 md:flex">
+      {providerOrder.map((providerName) => (
+        <span
+          key={providerName}
+          className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs ${providerMeta[providerName].tone}`}
+          title={providerModel(health, providerName)}
+        >
+          <span className={`h-1.5 w-1.5 rounded-full ${providerMeta[providerName].dot}`} />
+          {providerLabels[providerName]}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function ModePicker({ mode, setMode, disabled }) {
+  return (
+    <div className="min-w-0 flex-1">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <label className="text-sm font-medium text-neutral-300">Mode</label>
+        <span className="text-xs text-neutral-500">Choose how the models collaborate</span>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+        {modeOptions.map((option) => {
+          const active = mode === option.value;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => setMode(option.value)}
+              disabled={disabled}
+              className={`rounded-md border px-3 py-2 text-left transition focus:outline-none focus:ring-2 focus:ring-violet-300/60 ${
+                active
+                  ? "border-violet-300/70 bg-violet-400/15 text-violet-50"
+                  : "border-neutral-800 bg-neutral-950/60 text-neutral-300 hover:border-neutral-600"
+              } disabled:cursor-not-allowed disabled:opacity-60`}
+            >
+              <span className="block text-sm font-semibold">{option.label}</span>
+              <span className="mt-0.5 block truncate text-xs text-neutral-500">
+                {option.description}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ModeSettings({
+  mode,
+  provider,
+  setProvider,
+  roundCount,
+  setRoundCount,
+  speakerOrder,
+  setSpeakerOrder,
+  pauseBetween,
+  setPauseBetween,
+  disabled,
+}) {
+  if (mode === "single") {
+    return (
+      <div className="w-full xl:w-56">
+        <ProviderSelect provider={provider} setProvider={setProvider} disabled={disabled} />
+      </div>
+    );
+  }
+
+  if (mode === "debate") {
+    return (
+      <div className="w-full xl:w-44">
+        <Control label="Rounds" htmlFor="rounds">
+          <input
+            id="rounds"
+            type="number"
+            min="1"
+            max="9"
+            value={roundCount}
+            onChange={(event) => setRoundCount(Number(event.target.value))}
+            disabled={disabled}
+            className="control"
+          />
+        </Control>
+      </div>
+    );
+  }
+
+  if (mode === "relay") {
+    return (
+      <div className="grid w-full gap-3 xl:w-[360px]">
+        <Control label="Speaker order" htmlFor="speaker-order">
+          <input
+            id="speaker-order"
+            value={speakerOrder}
+            onChange={(event) => setSpeakerOrder(event.target.value)}
+            disabled={disabled}
+            className="control"
+          />
+        </Control>
+        <label className="flex items-center gap-2 rounded-md border border-neutral-800 bg-neutral-950/60 px-3 py-2 text-sm text-neutral-300">
+          <input
+            type="checkbox"
+            checked={pauseBetween}
+            onChange={(event) => setPauseBetween(event.target.checked)}
+            disabled={disabled}
+          />
+          Pause between speakers
+        </label>
+      </div>
+    );
+  }
+
+  return null;
+}
+
 function ColumnGrid({
   providers,
   columns,
@@ -1196,23 +1352,51 @@ function ProviderCard({
   isRerunning,
 }) {
   const hasContent = Boolean(column.content);
+  const meta = providerMeta[providerName] || providerMeta.scribe;
+  const status = column.error
+    ? "Error"
+    : column.done
+      ? "Done"
+      : hasContent
+        ? "Writing"
+        : "Waiting";
   return (
-    <article className="min-h-64 rounded-lg border border-neutral-800 bg-neutral-900/60 p-4">
-      <div className="mb-3 flex flex-col gap-3 border-b border-neutral-800 pb-3">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-300">{providerLabels[providerName]}</h2>
-          <span className="text-xs text-neutral-500">{column.model || providerModel(health, providerName)}</span>
+    <article className="provider-panel min-h-64 p-4">
+      <div className="mb-4 flex flex-col gap-3 border-b border-neutral-800 pb-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-md border text-sm font-bold ${meta.tone}`}>
+              {meta.initial}
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-sm font-semibold text-neutral-100">{providerLabels[providerName]}</h2>
+              <p className="mt-0.5 truncate text-xs text-neutral-500">
+                {column.model || providerModel(health, providerName)}
+              </p>
+            </div>
+          </div>
+          <span className={`rounded px-2 py-1 text-[11px] font-medium uppercase tracking-wide ${
+            column.error
+              ? "bg-red-500/10 text-red-200"
+              : column.done
+                ? "bg-emerald-500/10 text-emerald-200"
+                : hasContent
+                  ? "bg-violet-500/10 text-violet-200"
+                  : "bg-neutral-800 text-neutral-400"
+          }`}>
+            {status}
+          </span>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-xs text-neutral-500">
             {column.usage ? tokenText(column.usage.prompt_tokens, column.usage.output_tokens) : "tokens unavailable"}
           </span>
           <div className="flex gap-2">
-            <button type="button" onClick={() => onCopy?.(column.content)} disabled={!hasContent} className="rounded-md border border-neutral-700 px-2 py-1 text-xs text-neutral-200 hover:border-neutral-500 disabled:cursor-not-allowed disabled:text-neutral-600">
+            <button type="button" onClick={() => onCopy?.(column.content)} disabled={!hasContent} className="secondary-button px-2 py-1 text-xs">
               Copy
             </button>
             {onRerun && (
-              <button type="button" onClick={() => onRerun(providerName)} disabled={isLoading || isStreaming} className="rounded-md border border-neutral-700 px-2 py-1 text-xs text-neutral-200 hover:border-neutral-500 disabled:cursor-not-allowed disabled:text-neutral-600">
+              <button type="button" onClick={() => onRerun(providerName)} disabled={isLoading || isStreaming} className="secondary-button px-2 py-1 text-xs">
                 {isRerunning ? "Rerun..." : "Rerun"}
               </button>
             )}
@@ -1248,19 +1432,23 @@ function SuperMindView({
   isStreaming,
   onCopy,
 }) {
+  const completedCount = providerOrder.filter((providerName) => columns[providerName]?.content).length;
   return (
     <section className="space-y-4">
-      <div className="flex flex-col gap-3 rounded-lg border border-violet-500/30 bg-violet-500/10 p-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="panel flex flex-col gap-3 border-violet-400/30 bg-violet-500/10 p-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-sm font-semibold uppercase tracking-wide text-violet-200">
             Super Mind
           </h2>
+          <p className="mt-1 text-sm text-neutral-400">
+            {completedCount} AIs combined into one answer
+          </p>
         </div>
         <div className="grid w-full grid-cols-3 rounded-md border border-violet-500/30 bg-neutral-950/70 p-1 sm:w-auto">
           <button
             type="button"
             onClick={() => setTab("unified")}
-            className={`rounded px-3 py-2 text-sm font-medium transition ${
+            className={`rounded px-3 py-2 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-violet-300/60 ${
               tab === "unified"
                 ? "bg-violet-400 text-neutral-950"
                 : "text-violet-100 hover:bg-violet-500/10"
@@ -1271,7 +1459,7 @@ function SuperMindView({
           <button
             type="button"
             onClick={() => setTab("individual")}
-            className={`rounded px-3 py-2 text-sm font-medium transition ${
+            className={`rounded px-3 py-2 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-violet-300/60 ${
               tab === "individual"
                 ? "bg-violet-400 text-neutral-950"
                 : "text-violet-100 hover:bg-violet-500/10"
@@ -1282,7 +1470,7 @@ function SuperMindView({
           <button
             type="button"
             onClick={() => setTab("scribe")}
-            className={`rounded px-3 py-2 text-sm font-medium transition ${
+            className={`rounded px-3 py-2 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-violet-300/60 ${
               tab === "scribe"
                 ? "bg-violet-400 text-neutral-950"
                 : "text-violet-100 hover:bg-violet-500/10"
@@ -1330,22 +1518,29 @@ function SuperMindView({
 }
 
 function SynthesisCard({ title = "Synthesis", emptyText, synthesis, onCopy }) {
+  const providerName = synthesis.provider || "scribe";
+  const meta = providerMeta[providerName] || providerMeta.scribe;
   return (
-    <section className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4">
+    <section className="provider-panel border-emerald-500/30 bg-emerald-500/10 p-4">
       <div className="mb-3 flex flex-col gap-3 border-b border-emerald-500/20 pb-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-emerald-200">
-            {title}
-          </h2>
-          <span className="text-xs text-emerald-200/70">
-            {providerLabels[synthesis.provider] || synthesis.provider || "Synthesis provider"}
-          </span>
+        <div className="flex min-w-0 items-center gap-3">
+          <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-md border text-sm font-bold ${meta.tone}`}>
+            {meta.initial}
+          </div>
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-emerald-100">
+              {title}
+            </h2>
+            <span className="text-xs text-emerald-200/70">
+              {providerLabels[synthesis.provider] || synthesis.provider || "Synthesis provider"}
+            </span>
+          </div>
         </div>
         <button
           type="button"
           onClick={() => onCopy?.(synthesis.content)}
           disabled={!synthesis.content}
-          className="rounded-md border border-emerald-500/30 px-2 py-1 text-xs text-emerald-100 hover:border-emerald-300 disabled:cursor-not-allowed disabled:text-emerald-900"
+          className="secondary-button border-emerald-500/30 px-2 py-1 text-xs text-emerald-100 hover:border-emerald-300"
         >
           Copy
         </button>
@@ -1365,10 +1560,38 @@ function SynthesisCard({ title = "Synthesis", emptyText, synthesis, onCopy }) {
 function DebateView({ rounds, synthesis, health, onCopy }) {
   const roundKeys = Object.keys(rounds).map(Number).sort((a, b) => a - b);
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
+      <div className="panel flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-300">
+            Debate
+          </h2>
+          <p className="mt-1 text-sm text-neutral-500">
+            Each round is capped for quick scanning; synthesis is the final verdict.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {roundKeys.length === 0 ? (
+            <span className="rounded-md border border-neutral-800 px-2 py-1 text-xs text-neutral-500">
+              Waiting for round 1
+            </span>
+          ) : (
+            roundKeys.map((round) => (
+              <span key={round} className="rounded-md border border-violet-400/30 bg-violet-400/10 px-2 py-1 text-xs text-violet-100">
+                Round {round}
+              </span>
+            ))
+          )}
+        </div>
+      </div>
       {roundKeys.map((round) => (
         <section key={round} className="space-y-3">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">Round {round}</h2>
+          <div className="flex items-center gap-3">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
+              Round {round}
+            </h3>
+            <div className="h-px flex-1 bg-neutral-800" />
+          </div>
           <ColumnGrid providers={providerOrder} columns={rounds[round]} health={health} isLoading={false} isStreaming={false} onCopy={onCopy} />
         </section>
       ))}

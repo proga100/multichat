@@ -3,7 +3,29 @@
 @tailwind utilities;
 
 @layer components {
+  .app-shell {
+    background:
+      linear-gradient(180deg, rgba(25, 15, 44, 0.72), rgba(8, 8, 11, 0.96) 34rem),
+      #08080b;
+  }
+
+  .panel {
+    @apply rounded-lg border border-neutral-800 bg-neutral-900/70 shadow-[0_18px_70px_rgba(0,0,0,0.24)] backdrop-blur;
+  }
+
+  .provider-panel {
+    @apply rounded-lg border border-neutral-800 bg-neutral-900/70 shadow-[0_18px_60px_rgba(0,0,0,0.18)] backdrop-blur;
+  }
+
   .control {
-    @apply rounded-md border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none transition focus:border-neutral-500 disabled:cursor-not-allowed disabled:text-neutral-500;
+    @apply rounded-md border border-neutral-800 bg-neutral-950/80 px-3 py-2 text-sm text-neutral-100 outline-none transition focus:border-violet-400/70 disabled:cursor-not-allowed disabled:text-neutral-500;
+  }
+
+  .primary-button {
+    @apply rounded-md bg-violet-300 px-4 py-2 text-sm font-semibold text-neutral-950 transition hover:bg-violet-200 disabled:cursor-not-allowed disabled:bg-neutral-700 disabled:text-neutral-400;
+  }
+
+  .secondary-button {
+    @apply rounded-md border border-neutral-700 bg-neutral-950/50 px-3 py-2 text-sm text-neutral-200 transition hover:border-neutral-500 hover:bg-neutral-900 disabled:cursor-not-allowed disabled:text-neutral-600;
   }
 }
