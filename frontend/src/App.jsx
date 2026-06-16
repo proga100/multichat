@@ -107,6 +107,223 @@ async function copyText(text) {
   }
 }
 
+function InlineMarkdown({ text }) {
+  const parts = String(text).split(/(`[^`]+`|\*\*[^*]+\*\*)/g);
+  return parts.map((part, index) => {
+    if (part.startsWith("`") && part.endsWith("`")) {
+      return (
+        <code key={index} className="rounded bg-neutral-800 px-1 py-0.5 text-[0.9em] text-emerald-100">
+          {part.slice(1, -1)}
+        </code>
+      );
+    }
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return (
+        <strong key={index} className="font-semibold text-neutral-50">
+          {part.slice(2, -2)}
+        </strong>
+      );
+    }
+    return <span key={index}>{part}</span>;
+  });
+}
+
+function MarkdownText({ content, className = "" }) {
+  const lines = String(content || "").replace(/\r\n/g, "\n").split("\n");
+  const blocks = [];
+  let paragraph = [];
+  let list = [];
+  let table = [];
+  let code = [];
+  let inCode = false;
+  let codeLanguage = "";
+
+  function flushParagraph() {
+    if (!paragraph.length) return;
+    blocks.push({ type: "paragraph", text: paragraph.join(" ") });
+    paragraph = [];
+  }
+
+  function flushList() {
+    if (!list.length) return;
+    blocks.push({ type: "list", ordered: list[0].ordered, items: list.map((item) => item.text) });
+    list = [];
+  }
+
+  function flushTable() {
+    if (!table.length) return;
+    const rows = table
+      .filter((row) => !/^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$/.test(row))
+      .map((row) =>
+        row
+          .replace(/^\|/, "")
+          .replace(/\|$/, "")
+          .split("|")
+          .map((cell) => cell.trim()),
+      );
+    if (rows.length) blocks.push({ type: "table", rows });
+    table = [];
+  }
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    if (trimmed.startsWith("```")) {
+      if (inCode) {
+        blocks.push({ type: "code", language: codeLanguage, text: code.join("\n") });
+        code = [];
+        codeLanguage = "";
+        inCode = false;
+      } else {
+        flushParagraph();
+        flushList();
+        flushTable();
+        inCode = true;
+        codeLanguage = trimmed.slice(3).trim();
+      }
+      continue;
+    }
+
+    if (inCode) {
+      code.push(line);
+      continue;
+    }
+
+    if (!trimmed) {
+      flushParagraph();
+      flushList();
+      flushTable();
+      continue;
+    }
+
+    if (trimmed.includes("|") && trimmed.split("|").length >= 3) {
+      flushParagraph();
+      flushList();
+      table.push(trimmed);
+      continue;
+    }
+
+    flushTable();
+
+    const heading = /^(#{1,4})\s+(.+)$/.exec(trimmed);
+    if (heading) {
+      flushParagraph();
+      flushList();
+      blocks.push({ type: "heading", level: heading[1].length, text: heading[2] });
+      continue;
+    }
+
+    const bullet = /^[-*]\s+(.+)$/.exec(trimmed);
+    const numbered = /^(\d+)[.)]\s+(.+)$/.exec(trimmed);
+    if (bullet || numbered) {
+      flushParagraph();
+      const ordered = Boolean(numbered);
+      if (list.length && list[0].ordered !== ordered) flushList();
+      list.push({ ordered, text: bullet ? bullet[1] : numbered[2] });
+      continue;
+    }
+
+    const quote = /^>\s?(.+)$/.exec(trimmed);
+    if (quote) {
+      flushParagraph();
+      flushList();
+      blocks.push({ type: "quote", text: quote[1] });
+      continue;
+    }
+
+    paragraph.push(trimmed);
+  }
+
+  if (inCode) blocks.push({ type: "code", language: codeLanguage, text: code.join("\n") });
+  flushParagraph();
+  flushList();
+  flushTable();
+
+  return (
+    <div className={`space-y-4 text-sm leading-7 text-neutral-100 ${className}`}>
+      {blocks.map((block, index) => {
+        if (block.type === "heading") {
+          const size =
+            block.level === 1
+              ? "text-lg"
+              : block.level === 2
+                ? "text-base"
+                : "text-sm";
+          return (
+            <h3 key={index} className={`${size} font-semibold text-neutral-50`}>
+              <InlineMarkdown text={block.text} />
+            </h3>
+          );
+        }
+        if (block.type === "list") {
+          const ListTag = block.ordered ? "ol" : "ul";
+          return (
+            <ListTag
+              key={index}
+              className={`space-y-2 pl-5 ${block.ordered ? "list-decimal" : "list-disc"}`}
+            >
+              {block.items.map((item, itemIndex) => (
+                <li key={itemIndex} className="pl-1">
+                  <InlineMarkdown text={item} />
+                </li>
+              ))}
+            </ListTag>
+          );
+        }
+        if (block.type === "code") {
+          return (
+            <pre key={index} className="overflow-x-auto rounded-md border border-neutral-800 bg-neutral-950 p-3 text-xs leading-5 text-neutral-100">
+              {block.language && <div className="mb-2 text-[11px] uppercase text-neutral-500">{block.language}</div>}
+              <code>{block.text}</code>
+            </pre>
+          );
+        }
+        if (block.type === "table") {
+          const [header, ...rows] = block.rows;
+          return (
+            <div key={index} className="overflow-x-auto rounded-md border border-neutral-800">
+              <table className="min-w-full border-collapse text-left text-xs">
+                <thead className="bg-neutral-900 text-neutral-200">
+                  <tr>
+                    {header.map((cell, cellIndex) => (
+                      <th key={cellIndex} className="border-b border-neutral-800 px-3 py-2 font-semibold">
+                        <InlineMarkdown text={cell} />
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row, rowIndex) => (
+                    <tr key={rowIndex} className="border-t border-neutral-800/70">
+                      {row.map((cell, cellIndex) => (
+                        <td key={cellIndex} className="px-3 py-2 align-top text-neutral-200">
+                          <InlineMarkdown text={cell} />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        }
+        if (block.type === "quote") {
+          return (
+            <blockquote key={index} className="border-l-2 border-neutral-600 pl-3 text-neutral-300">
+              <InlineMarkdown text={block.text} />
+            </blockquote>
+          );
+        }
+        return (
+          <p key={index}>
+            <InlineMarkdown text={block.text} />
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function App() {
   const [health, setHealth] = useState(null);
   const [healthError, setHealthError] = useState(null);
@@ -911,9 +1128,7 @@ function HistoryView({ thread, onCopy, onEditLast, onRerunLast }) {
               Copy
             </button>
           </div>
-          <p className="whitespace-pre-wrap text-sm leading-6 text-neutral-100">
-            {message.content}
-          </p>
+          <MarkdownText content={message.content} />
         </article>
       ))}
     </section>
@@ -1008,7 +1223,7 @@ function ProviderCard({
       {column.error && <p className="whitespace-pre-wrap text-sm text-red-300">{column.error}</p>}
       {!column.error && (isLoading || isStreaming) && !hasContent && <p className="text-sm text-neutral-400">Waiting for stream...</p>}
       {!column.error && !isLoading && !isStreaming && !hasContent && <p className="text-sm text-neutral-500">The answer will appear here.</p>}
-      {hasContent && <p className="whitespace-pre-wrap text-sm leading-6 text-neutral-100">{column.content}</p>}
+      {hasContent && <MarkdownText content={column.content} />}
     </article>
   );
 }
@@ -1139,11 +1354,7 @@ function SynthesisCard({ title = "Synthesis", emptyText, synthesis, onCopy }) {
       {synthesis.error && (
         <p className="whitespace-pre-wrap text-sm text-red-300">{synthesis.error}</p>
       )}
-      {!synthesis.error && synthesis.content && (
-        <p className="whitespace-pre-wrap text-sm leading-6 text-neutral-100">
-          {synthesis.content}
-        </p>
-      )}
+      {!synthesis.error && synthesis.content && <MarkdownText content={synthesis.content} />}
       {!synthesis.error && !synthesis.content && (
         <p className="text-sm text-neutral-400">{emptyText || "Synthesis will appear here."}</p>
       )}
@@ -1179,7 +1390,13 @@ function RelayView({ transcript, onCopy }) {
             </button>
           </div>
           <FallbackBadge column={item} />
-          <p className={`mt-3 whitespace-pre-wrap text-sm leading-6 ${item.error ? "text-red-300" : "text-neutral-100"}`}>{item.content || "Waiting for stream..."}</p>
+          {item.error ? (
+            <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-red-300">{item.content || "Waiting for stream..."}</p>
+          ) : item.content ? (
+            <MarkdownText content={item.content} className="mt-3" />
+          ) : (
+            <p className="mt-3 text-sm leading-6 text-neutral-400">Waiting for stream...</p>
+          )}
         </article>
       ))}
     </section>
