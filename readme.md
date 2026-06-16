@@ -6,9 +6,9 @@ their individual answers into one polished response (**Super Mind**), or have
 them critique each other across rounds and synthesize a final answer
 (**Debate**). BYOK — your own API keys in `.env`. Single user, no auth.
 
-> Status: **Stage 11 complete.** Compare, Super Mind, single-provider streaming,
-> debate, relay, persisted thread reopen, Telegram, Docker deployment, and
-> daily-use UI controls are implemented.
+> Status: **Stage 12 complete.** Compare, Super Mind with Scribe notes,
+> single-provider streaming, debate, relay, persisted thread reopen, Telegram,
+> Docker deployment, and daily-use UI controls are implemented.
 
 ## Architecture (the part that matters)
 
@@ -183,3 +183,4 @@ stop."* Codex works stage by stage, running each stage's acceptance checks.
 9. *(optional)* Mac packaging (menu-bar or Tauri).
 10. Ergonomics: keyboard send, copy, rerun, and token metadata. ✅
 11. **Super Mind**: unified synthesis tab plus individual model responses. ✅
+12. **Scribe**: meeting-ready notes from Super Mind runs. ✅

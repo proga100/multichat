@@ -210,6 +210,8 @@ async def stream_run(run_id: int, request: Request) -> StreamingResponse:
             collected: dict[tuple[str, int], list[str]] = {}
             synthesis: list[str] = []
             synthesis_provider = ""
+            scribe: list[str] = []
+            scribe_provider = ""
             async for event in stream_supermind(prompt):
                 if await request.is_disconnected():
                     return
@@ -237,6 +239,18 @@ async def stream_run(run_id: int, request: Request) -> StreamingResponse:
                         provider=provider,
                         model=resolve_model(ProviderName(provider), False),
                         content="".join(synthesis),
+                        round_number=int(event["round"]),
+                    )
+                elif event_type == "scribe_delta":
+                    scribe.append(str(event["delta"]))
+                    scribe_provider = str(event["provider"])
+                elif event_type == "scribe_done":
+                    provider = scribe_provider or str(event["provider"])
+                    persist_assistant_message(
+                        thread_id=run_id,
+                        provider="scribe",
+                        model=resolve_model(ProviderName(provider), False),
+                        content="".join(scribe),
                         round_number=int(event["round"]),
                     )
 

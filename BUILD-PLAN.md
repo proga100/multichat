@@ -311,6 +311,17 @@ regenerate one provider without rerunning all three, per-run token/cost counter
   responses stream first, then the unified response appears; thread history
   stores all four assistant messages.
 
+### Stage 12 — Super Mind Scribe notes
+
+- After Super Mind's unified response, run a scribe pass that creates concise
+  Markdown notes: decision brief, consensus, disagreements/uncertainty, risks,
+  open questions, and next actions.
+- Persist Scribe as a normal assistant message with `provider='scribe'`.
+- Frontend: add a `Scribe` tab beside `Unified` and `Individual`.
+- Telegram: include Scribe notes after the unified response.
+- **Acceptance:** run a Super Mind prompt end to end; the Scribe tab fills after
+  the unified answer; thread history stores five assistant messages.
+
 ---
 
 ## 5. Suggested file/module layout

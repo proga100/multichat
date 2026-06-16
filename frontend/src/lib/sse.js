@@ -26,6 +26,18 @@ export function openRunStream(runId, options, handlers) {
     handlers.onSynthesisDone?.(JSON.parse(event.data));
   });
 
+  source.addEventListener("scribe_start", (event) => {
+    handlers.onScribeStart?.(JSON.parse(event.data));
+  });
+
+  source.addEventListener("scribe_delta", (event) => {
+    handlers.onScribeDelta?.(JSON.parse(event.data));
+  });
+
+  source.addEventListener("scribe_done", (event) => {
+    handlers.onScribeDone?.(JSON.parse(event.data));
+  });
+
   source.addEventListener("relay_speaker_start", (event) => {
     handlers.onRelaySpeakerStart?.(JSON.parse(event.data));
   });

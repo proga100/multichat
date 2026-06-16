@@ -8,6 +8,7 @@ const providerLabels = {
   anthropic: "Anthropic",
   openai: "OpenAI",
   gemini: "Gemini",
+  scribe: "Scribe",
 };
 
 function createColumns() {
@@ -34,6 +35,16 @@ function createSynthesis() {
     fallbackProvider: null,
     fallbackReason: null,
     usage: null,
+    error: null,
+  };
+}
+
+function createScribe() {
+  return {
+    content: "",
+    provider: "",
+    fallbackProvider: null,
+    fallbackReason: null,
     error: null,
   };
 }
@@ -102,6 +113,7 @@ export default function App() {
   const [columns, setColumns] = useState(createColumns);
   const [debateRounds, setDebateRounds] = useState({});
   const [synthesis, setSynthesis] = useState(createSynthesis);
+  const [scribe, setScribe] = useState(createScribe);
   const [supermindTab, setSupermindTab] = useState("unified");
   const [relayTranscript, setRelayTranscript] = useState([]);
   const [runError, setRunError] = useState(null);
@@ -135,6 +147,7 @@ export default function App() {
     setColumns(createColumns());
     setDebateRounds({});
     setSynthesis(createSynthesis());
+    setScribe(createScribe());
     setSupermindTab("unified");
     setRelayTranscript([]);
     setRunError(null);
@@ -253,6 +266,17 @@ export default function App() {
             fallbackProvider: event.fallback_provider || current.fallbackProvider,
           }));
         },
+        onScribeStart: (event) => {
+          setScribe((current) => ({ ...current, provider: event.provider }));
+        },
+        onScribeDelta: (event) => {
+          setScribe((current) => ({
+            ...current,
+            provider: event.provider,
+            content: current.content + event.delta,
+            fallbackProvider: event.fallback_provider || current.fallbackProvider,
+          }));
+        },
         onRelaySpeakerStart: (event) => {
           setRelayTranscript((current) => [
             ...current,
@@ -298,6 +322,15 @@ export default function App() {
 
           if (run.mode === "supermind" && event.round === 2) {
             setSynthesis((current) => ({
+              ...current,
+              fallbackProvider: event.fallback_provider,
+              fallbackReason: event.message,
+            }));
+            return;
+          }
+
+          if (run.mode === "supermind" && event.round === 3) {
+            setScribe((current) => ({
               ...current,
               fallbackProvider: event.fallback_provider,
               fallbackReason: event.message,
@@ -352,6 +385,15 @@ export default function App() {
               ...current,
               provider: event.provider,
               error: event.message || "Synthesis failed.",
+            }));
+            return;
+          }
+
+          if (run.mode === "supermind" && event.round === 3) {
+            setScribe((current) => ({
+              ...current,
+              provider: event.provider,
+              error: event.message || "Scribe failed.",
             }));
             return;
           }
@@ -635,6 +677,7 @@ export default function App() {
             setTab={setSupermindTab}
             columns={columns}
             synthesis={synthesis}
+            scribe={scribe}
             health={health}
             isLoading={isLoading}
             isStreaming={isStreaming}
@@ -864,6 +907,7 @@ function SuperMindView({
   setTab,
   columns,
   synthesis,
+  scribe,
   health,
   isLoading,
   isStreaming,
@@ -877,7 +921,7 @@ function SuperMindView({
             Super Mind
           </h2>
         </div>
-        <div className="grid w-full grid-cols-2 rounded-md border border-violet-500/30 bg-neutral-950/70 p-1 sm:w-auto">
+        <div className="grid w-full grid-cols-3 rounded-md border border-violet-500/30 bg-neutral-950/70 p-1 sm:w-auto">
           <button
             type="button"
             onClick={() => setTab("unified")}
@@ -900,6 +944,17 @@ function SuperMindView({
           >
             Individual
           </button>
+          <button
+            type="button"
+            onClick={() => setTab("scribe")}
+            className={`rounded px-3 py-2 text-sm font-medium transition ${
+              tab === "scribe"
+                ? "bg-violet-400 text-neutral-950"
+                : "text-violet-100 hover:bg-violet-500/10"
+            }`}
+          >
+            Scribe
+          </button>
         </div>
       </div>
 
@@ -912,6 +967,17 @@ function SuperMindView({
               : "The unified answer will appear here."
           }
           synthesis={synthesis}
+          onCopy={onCopy}
+        />
+      ) : tab === "scribe" ? (
+        <SynthesisCard
+          title="Scribe Notes"
+          emptyText={
+            isLoading || isStreaming
+              ? "Scribe notes will appear after the unified response."
+              : "Scribe notes will appear here."
+          }
+          synthesis={scribe}
           onCopy={onCopy}
         />
       ) : (

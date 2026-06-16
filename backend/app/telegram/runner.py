@@ -119,6 +119,8 @@ async def _run_debate(
     round_answers: dict[int, dict[str, str]] = {}
     synthesis: list[str] = []
     synthesis_provider = ""
+    scribe: list[str] = []
+    scribe_provider = ""
 
     async for event in stream_debate(
         command.prompt,
@@ -172,6 +174,27 @@ async def _run_debate(
             yield TelegramResult(
                 title="Synthesis",
                 body=content or "[no synthesis]",
+            )
+            continue
+
+        if event_type == "scribe_delta":
+            scribe.append(str(event["delta"]))
+            scribe_provider = str(event["provider"])
+            continue
+
+        if event_type == "scribe_done":
+            provider = scribe_provider or str(event["provider"])
+            content = "".join(scribe)
+            persist_assistant_message(
+                thread_id=thread_id,
+                provider="scribe",
+                model=resolve_model(ProviderName(provider), command.premium),
+                content=content,
+                round_number=int(event["round"]),
+            )
+            yield TelegramResult(
+                title="Scribe notes",
+                body=content or "[no scribe notes]",
             )
             continue
 

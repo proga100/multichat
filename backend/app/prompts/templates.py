@@ -48,6 +48,22 @@ SUPERMIND_SYNTHESIS = (
     "decisive. Use clear structure when it improves readability."
 )
 
+# {answers} = individual model answers; {unified} = the unified response.
+SUPERMIND_SCRIBE = (
+    "You are the scribe for a multi-AI discussion.\n\nUser request:\n{prompt}\n\n"
+    "Individual answers:\n{answers}\n\nUnified response:\n{unified}\n\n"
+    "Create concise, meeting-ready notes in Markdown with exactly these "
+    "sections:\n\n"
+    "## Decision Brief\n"
+    "## Consensus\n"
+    "## Disagreements / Uncertainty\n"
+    "## Risks\n"
+    "## Open Questions\n"
+    "## Next Actions\n\n"
+    "Use concrete bullets. Do not add generic process advice. If a section has "
+    "nothing meaningful, write '- None surfaced.'"
+)
+
 # --- EXPERT (parallel topology, different role per column) ------------------
 # {role} is injected per-provider, e.g. "a senior security engineer".
 EXPERT_ROLE = (
