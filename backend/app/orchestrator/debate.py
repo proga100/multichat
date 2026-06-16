@@ -9,9 +9,8 @@ from app.orchestrator.compare import COMPARE_PROVIDERS
 from app.orchestrator.provider_stream import stream_provider_events
 from app.prompts.templates import DEBATE_CRITIQUE, DEBATE_ROUND1, DEBATE_SYNTHESIS
 
-DEBATE_ROUND1_MAX_CHARS = 900
-DEBATE_CRITIQUE_MAX_CHARS = 600
-DEBATE_SYNTHESIS_MAX_CHARS = 1000
+DEBATE_ROUND_MAX_CHARS = 600
+DEBATE_SYNTHESIS_MAX_CHARS = 800
 TRIM_NOTICE = "\n\n[Trimmed for length.]"
 
 
@@ -37,9 +36,7 @@ def _format_answers(
 
 
 def _round_output_limit(round_number: int) -> int:
-    if round_number <= 1:
-        return DEBATE_ROUND1_MAX_CHARS
-    return DEBATE_CRITIQUE_MAX_CHARS
+    return DEBATE_ROUND_MAX_CHARS
 
 
 def _limit_delta(delta: str, emitted_chars: int, max_chars: int) -> tuple[str, bool]:
@@ -49,7 +46,10 @@ def _limit_delta(delta: str, emitted_chars: int, max_chars: int) -> tuple[str, b
     if len(delta) <= remaining:
         return delta, False
 
-    trimmed = delta[:remaining].rstrip()
+    if remaining <= len(TRIM_NOTICE):
+        return delta[:remaining].rstrip(), True
+
+    trimmed = delta[: remaining - len(TRIM_NOTICE)].rstrip()
     if trimmed:
         trimmed = f"{trimmed}{TRIM_NOTICE}"
     return trimmed, True

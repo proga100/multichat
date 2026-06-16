@@ -17,7 +17,7 @@ file just establishes the home for them.
 DEBATE_ROUND1 = (
     "Answer the user's question directly and concretely. Be concise: give your "
     "best answer, not an exhaustive report. Use readable Markdown with short "
-    "sections or bullets. Keep the answer under 180 words unless the user "
+    "sections or bullets. Keep the answer under 120 words unless the user "
     "explicitly asks for a long report. "
     "You are one of several independent models answering in parallel; you "
     "cannot see the others yet."
@@ -29,7 +29,7 @@ DEBATE_CRITIQUE = (
     "Challenge only the most important weak points. Then defend or revise your "
     "own previous answer. Be direct about where they are wrong and where they "
     "are right. Do not merely summarize. Avoid repeating earlier content. Keep "
-    "this round under 120 words unless the user explicitly asks for a long "
+    "each debate round under 120 words unless the user explicitly asks for a long "
     "report."
 )
 
@@ -39,7 +39,7 @@ DEBATE_SYNTHESIS = (
     "question:\n\n{answers}\n\nProduce ONE combined best answer. Explicitly "
     "note: (1) where they AGREED, (2) where they DISAGREED, and (3) your final "
     "recommendation. Remove duplication and keep only the strongest points. Be "
-    "decisive. Keep the synthesis under 300 words unless the user explicitly "
+    "decisive. Keep the synthesis under 220 words unless the user explicitly "
     "asks for a long report."
 )
 
