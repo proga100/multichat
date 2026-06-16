@@ -27,8 +27,10 @@ class Settings(BaseSettings):
     anthropic_max_tokens: int = 1024
     openai_model_default: str = "gpt-5-mini"
     openai_model_premium: str = "gpt-5"
+    openai_max_output_tokens: int = 1024
     gemini_model_default: str = "gemini-2.5-flash"
     gemini_model_premium: str = "gemini-2.5-pro"
+    gemini_max_output_tokens: int = 1024
 
     # Debate-mode synthesis: which provider writes the final combined answer.
     synthesis_provider: str = "anthropic"

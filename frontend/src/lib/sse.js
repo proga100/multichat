@@ -1,5 +1,6 @@
-export function openRunStream(runId, handlers) {
-  const source = new EventSource(`/api/runs/${runId}/stream`);
+export function openRunStream(runId, provider, handlers) {
+  const params = new URLSearchParams({ provider });
+  const source = new EventSource(`/api/runs/${runId}/stream?${params}`);
 
   source.addEventListener("delta", (event) => {
     handlers.onDelta?.(JSON.parse(event.data));

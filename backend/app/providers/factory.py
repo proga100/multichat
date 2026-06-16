@@ -16,7 +16,7 @@ from app.core.types import ProviderName
 from app.providers.base import BaseProvider
 
 
-def _resolve_model(provider: ProviderName, premium: bool) -> str:
+def resolve_model(provider: ProviderName, premium: bool) -> str:
     """Pick the configured model string for a provider + tier."""
     table = {
         ProviderName.ANTHROPIC: (settings.anthropic_model_default, settings.anthropic_model_premium),
@@ -28,7 +28,7 @@ def _resolve_model(provider: ProviderName, premium: bool) -> str:
 
 
 def make_provider(provider: ProviderName, premium: bool = False) -> BaseProvider:
-    model = _resolve_model(provider, premium)
+    model = resolve_model(provider, premium)
 
     if provider == ProviderName.ANTHROPIC:
         from app.providers.anthropic_provider import AnthropicProvider

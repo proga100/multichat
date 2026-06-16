@@ -7,11 +7,10 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from app.core.config import settings
 from app.core.db import get_connection
 from app.core.types import Message, ProviderName, Role
 from app.providers.base import ProviderCallError, ProviderConfigurationError
-from app.providers.factory import make_provider
+from app.providers.factory import make_provider, resolve_model
 
 router = APIRouter(prefix="/api/runs", tags=["runs"])
 
@@ -19,6 +18,7 @@ router = APIRouter(prefix="/api/runs", tags=["runs"])
 class CreateRunRequest(BaseModel):
     prompt: str = Field(min_length=1)
     premium: bool = False
+    provider: ProviderName = ProviderName.ANTHROPIC
 
 
 class CreateRunResponse(BaseModel):
@@ -52,11 +52,7 @@ def _get_run_prompt(run_id: int) -> str | None:
 
 @router.post("")
 async def create_run(request: CreateRunRequest) -> CreateRunResponse:
-    model = (
-        settings.anthropic_model_premium
-        if request.premium
-        else settings.anthropic_model_default
-    )
+    model = resolve_model(request.provider, request.premium)
 
     conn = get_connection()
     try:
@@ -78,7 +74,7 @@ async def create_run(request: CreateRunRequest) -> CreateRunResponse:
 
     return CreateRunResponse(
         run_id=run_id,
-        provider=ProviderName.ANTHROPIC,
+        provider=request.provider,
         model=model,
     )
 
@@ -90,9 +86,14 @@ async def stream_run(run_id: int, request: Request) -> StreamingResponse:
         raise HTTPException(status_code=404, detail="Run not found.")
 
     async def events() -> AsyncIterator[str]:
-        provider_name = ProviderName.ANTHROPIC.value
         try:
-            provider = make_provider(ProviderName.ANTHROPIC)
+            provider_choice = ProviderName(request.query_params.get("provider", "anthropic"))
+        except ValueError:
+            provider_choice = ProviderName.ANTHROPIC
+
+        provider_name = provider_choice.value
+        try:
+            provider = make_provider(provider_choice)
             messages = [Message(role=Role.USER, content=prompt)]
 
             async for delta in provider.stream(messages):

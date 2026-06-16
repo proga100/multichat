@@ -2,10 +2,22 @@ import { useEffect, useRef, useState } from "react";
 
 import { openRunStream } from "./lib/sse";
 
+const providerLabels = {
+  anthropic: "Anthropic",
+  openai: "OpenAI",
+  gemini: "Gemini",
+};
+
+function providerModel(health, provider) {
+  if (!health) return providerLabels[provider] || "Provider";
+  return health[`${provider}_model`] || providerLabels[provider] || "Provider";
+}
+
 export default function App() {
   const [health, setHealth] = useState(null);
   const [healthError, setHealthError] = useState(null);
   const [prompt, setPrompt] = useState("");
+  const [provider, setProvider] = useState("anthropic");
   const [answer, setAnswer] = useState("");
   const [model, setModel] = useState("");
   const [chatError, setChatError] = useState(null);
@@ -40,7 +52,7 @@ export default function App() {
       const response = await fetch("/api/runs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: trimmed }),
+        body: JSON.stringify({ prompt: trimmed, provider }),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -49,7 +61,7 @@ export default function App() {
       setModel(data.model);
       setIsStreaming(true);
 
-      streamRef.current = openRunStream(data.run_id, {
+      streamRef.current = openRunStream(data.run_id, data.provider, {
         onDelta: (event) => {
           setAnswer((current) => current + event.delta);
         },
@@ -76,7 +88,7 @@ export default function App() {
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">multichat</h1>
             <p className="mt-1 text-sm text-neutral-400">
-              Stage 3: Claude streaming check
+              Stage 4: provider streaming check
             </p>
           </div>
 
@@ -91,13 +103,30 @@ export default function App() {
             )}
             {health && (
               <span className="text-emerald-400">
-                ● connected · {health.anthropic_model}
+                ● connected
               </span>
             )}
           </div>
         </header>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+          <div className="flex flex-col gap-2 sm:max-w-xs">
+            <label htmlFor="provider" className="text-sm font-medium text-neutral-300">
+              Provider
+            </label>
+            <select
+              id="provider"
+              value={provider}
+              onChange={(event) => setProvider(event.target.value)}
+              disabled={isLoading || isStreaming}
+              className="rounded-md border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none transition focus:border-neutral-500 disabled:cursor-not-allowed disabled:text-neutral-500"
+            >
+              <option value="anthropic">Anthropic</option>
+              <option value="openai">OpenAI</option>
+              <option value="gemini">Gemini</option>
+            </select>
+          </div>
+
           <label htmlFor="prompt" className="text-sm font-medium text-neutral-300">
             Prompt
           </label>
@@ -105,7 +134,7 @@ export default function App() {
             id="prompt"
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
-            placeholder="Ask Claude one question..."
+            placeholder={`Ask ${providerLabels[provider]} one question...`}
             className="min-h-32 resize-y rounded-md border border-neutral-800 bg-neutral-900 px-4 py-3 text-base text-neutral-100 outline-none transition focus:border-neutral-500"
           />
           <div className="flex justify-end">
@@ -114,7 +143,11 @@ export default function App() {
               disabled={isLoading || isStreaming || !prompt.trim()}
               className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-neutral-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-neutral-700 disabled:text-neutral-400"
             >
-              {isStreaming ? "Streaming..." : isLoading ? "Starting..." : "Ask Claude"}
+              {isStreaming
+                ? "Streaming..."
+                : isLoading
+                  ? "Starting..."
+                  : `Ask ${providerLabels[provider]}`}
             </button>
           </div>
         </form>
@@ -123,10 +156,10 @@ export default function App() {
           <article className="rounded-lg border border-neutral-800 bg-neutral-900/60 p-4">
             <div className="mb-3 flex items-center justify-between gap-3 border-b border-neutral-800 pb-3">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-300">
-                Anthropic
+                {providerLabels[provider]}
               </h2>
               <span className="text-xs text-neutral-500">
-                {model || health?.anthropic_model || "Claude"}
+                {model || providerModel(health, provider)}
               </span>
             </div>
 
@@ -141,7 +174,7 @@ export default function App() {
             )}
             {answer && (
               <p className="whitespace-pre-wrap text-sm leading-6 text-neutral-100">
-                {answer.content}
+                {answer}
               </p>
             )}
           </article>
