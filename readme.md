@@ -123,10 +123,37 @@ relay: your prompt
 
 ## Deployment
 
-Mac-hosted: the API, providers, SQLite, and Telegram bot all run as one local
-process on your Mac. The Telegram front-end lets you trigger discussions from
-your phone whenever your Mac is awake and the app is running. No server, no
-public URL; keys stay in your local `.env`.
+Default local mode is Mac-hosted: the API, providers, SQLite, and Telegram bot
+run on your Mac, and keys stay in your local `backend/.env`.
+
+Docker production mode is also available if you intentionally want to run it on
+a server. In that case, provider keys and the Telegram token must be placed in
+the server's `backend/.env`, so treat the server as trusted infrastructure.
+
+## Docker
+
+Local Docker smoke test:
+
+```bash
+docker compose -f compose.yaml -f compose.local.yaml up --build
+# open http://127.0.0.1:8080
+```
+
+The local override disables Telegram polling inside Docker to avoid a duplicate
+poller if the normal local backend is already running.
+
+Production with HTTPS for `multichat.flance.info`:
+
+```bash
+docker compose -f compose.yaml -f compose.prod.yaml up -d --build
+```
+
+Before production:
+
+- Point the `multichat.flance.info` DNS A/AAAA record at the server.
+- Create `backend/.env` on the server with provider keys, Telegram token, and
+  `TELEGRAM_ALLOWED_USER_ID`.
+- Make sure ports `80` and `443` are open. Caddy will request TLS certificates.
 
 ## Building with Codex
 

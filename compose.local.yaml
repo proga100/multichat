@@ -1,0 +1,10 @@
+services:
+  backend:
+    environment:
+      # Avoid duplicate Telegram long-polling while the local non-Docker backend
+      # may also be running during development.
+      TELEGRAM_BOT_TOKEN: ""
+
+  frontend:
+    ports:
+      - "8080:80"
