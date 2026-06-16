@@ -160,16 +160,23 @@ async def start_telegram_bot() -> TelegramBotHandle | None:
     application.add_handler(CommandHandler(["start", "help"], _help))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, _handle_message))
 
-    await application.initialize()
-    if application.updater is None:
-        await application.shutdown()
-        raise RuntimeError("Telegram application was built without an updater.")
+    try:
+        await application.initialize()
+        if application.updater is None:
+            await application.shutdown()
+            raise RuntimeError("Telegram application was built without an updater.")
 
-    await application.updater.start_polling(
-        allowed_updates=["message"],
-        drop_pending_updates=True,
-        error_callback=_polling_error,
-    )
-    await application.start()
+        await application.updater.start_polling(
+            allowed_updates=["message"],
+            drop_pending_updates=True,
+            error_callback=_polling_error,
+        )
+        await application.start()
+    except Exception as exc:
+        logger.warning("Telegram bot startup failed; continuing without Telegram: %s", exc)
+        with contextlib.suppress(Exception):
+            await application.shutdown()
+        return None
+
     logger.info("Telegram bot started.")
     return TelegramBotHandle(application=application)
