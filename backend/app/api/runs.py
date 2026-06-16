@@ -36,6 +36,7 @@ RELAY_STATES: dict[int, RelayState] = {}
 
 class CreateRunRequest(BaseModel):
     prompt: str = Field(min_length=1)
+    thread_id: int | None = None
     mode: Literal["compare", "single", "debate", "relay"] = "compare"
     premium: bool = False
     provider: ProviderName = ProviderName.ANTHROPIC
@@ -51,6 +52,7 @@ class ProviderRunInfo(BaseModel):
 
 class CreateRunResponse(BaseModel):
     run_id: int
+    thread_id: int
     provider: ProviderName
     model: str
     mode: Literal["compare", "single", "debate", "relay"]
@@ -72,7 +74,7 @@ def _get_run_prompt(run_id: int) -> str | None:
             SELECT content
             FROM messages
             WHERE thread_id = ? AND role = ? AND provider IS NULL
-            ORDER BY id ASC
+            ORDER BY id DESC
             LIMIT 1
             """,
             (run_id, Role.USER.value),
@@ -132,11 +134,25 @@ async def create_run(request: CreateRunRequest) -> CreateRunResponse:
 
     conn = get_connection()
     try:
-        cursor = conn.execute(
-            "INSERT INTO threads (title, mode) VALUES (?, ?)",
-            (request.prompt[:80], request.mode),
-        )
-        run_id = int(cursor.lastrowid)
+        if request.thread_id is None:
+            cursor = conn.execute(
+                "INSERT INTO threads (title, mode) VALUES (?, ?)",
+                (request.prompt[:80], request.mode),
+            )
+            run_id = int(cursor.lastrowid)
+        else:
+            thread = conn.execute(
+                "SELECT id FROM threads WHERE id = ?",
+                (request.thread_id,),
+            ).fetchone()
+            if thread is None:
+                raise HTTPException(status_code=404, detail="Thread not found.")
+            run_id = request.thread_id
+            conn.execute(
+                "UPDATE threads SET mode = ? WHERE id = ?",
+                (request.mode, run_id),
+            )
+
         conn.execute(
             """
             INSERT INTO messages (thread_id, role, provider, model, content, round)
@@ -158,6 +174,7 @@ async def create_run(request: CreateRunRequest) -> CreateRunResponse:
 
     return CreateRunResponse(
         run_id=run_id,
+        thread_id=run_id,
         provider=request.provider,
         model=provider_models[0].model,
         mode=request.mode,
@@ -196,9 +213,22 @@ async def stream_run(run_id: int, request: Request) -> StreamingResponse:
         messages = [Message(role=Role.USER, content=prompt)]
 
         if mode == "compare":
+            collected: dict[tuple[str, int], list[str]] = {}
             async for event in stream_compare(messages):
                 if await request.is_disconnected():
                     return
+                if event["type"] == "delta":
+                    key = (str(event["provider"]), int(event["round"]))
+                    collected.setdefault(key, []).append(str(event["delta"]))
+                elif event["type"] == "provider_done":
+                    key = (str(event["provider"]), int(event["round"]))
+                    _persist_assistant_message(
+                        run_id,
+                        key[0],
+                        resolve_model(ProviderName(key[0]), False),
+                        "".join(collected.get(key, [])),
+                        key[1],
+                    )
                 yield _sse(event)
             yield _sse({"type": "run_done"})
             return
@@ -307,9 +337,20 @@ async def stream_run(run_id: int, request: Request) -> StreamingResponse:
             provider_choice = ProviderName.ANTHROPIC
 
         provider_name = provider_choice.value
+        content: list[str] = []
         async for event in stream_provider_events(provider_choice, messages):
             if await request.is_disconnected():
                 return
+            if event["type"] == "delta":
+                content.append(str(event["delta"]))
+            elif event["type"] == "provider_done":
+                _persist_assistant_message(
+                    run_id,
+                    provider_name,
+                    resolve_model(provider_choice, False),
+                    "".join(content),
+                    0,
+                )
             yield _sse(event)
 
         yield _sse({"type": "run_done"})

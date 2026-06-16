@@ -43,6 +43,8 @@ function ensureRound(rounds, roundNumber) {
 export default function App() {
   const [health, setHealth] = useState(null);
   const [healthError, setHealthError] = useState(null);
+  const [threads, setThreads] = useState([]);
+  const [selectedThread, setSelectedThread] = useState(null);
   const [prompt, setPrompt] = useState("");
   const [mode, setMode] = useState("compare");
   const [provider, setProvider] = useState("anthropic");
@@ -68,6 +70,7 @@ export default function App() {
       .then((r) => r.json())
       .then(setHealth)
       .catch((e) => setHealthError(String(e)));
+    loadThreads();
   }, []);
 
   useEffect(() => {
@@ -82,6 +85,30 @@ export default function App() {
     setRunError(null);
     setAwaitingHuman(null);
     setHumanSteer("");
+  }
+
+  async function loadThreads() {
+    const response = await fetch("/api/threads");
+    if (response.ok) {
+      setThreads(await response.json());
+    }
+  }
+
+  async function loadThread(threadId) {
+    const response = await fetch(`/api/threads/${threadId}`);
+    if (!response.ok) return;
+
+    const thread = await response.json();
+    setSelectedThread(thread);
+    setMode(thread.mode);
+    setPrompt("");
+    resetRunState();
+  }
+
+  function startNewThread() {
+    setSelectedThread(null);
+    setPrompt("");
+    resetRunState();
   }
 
   function parsedSpeakerOrder() {
@@ -269,6 +296,8 @@ export default function App() {
         onRunDone: () => {
           setIsStreaming(false);
           setIsLoading(false);
+          loadThreads();
+          if (run.thread_id) loadThread(run.thread_id);
         },
       },
     );
@@ -294,6 +323,7 @@ export default function App() {
           rounds: roundCount,
           speaker_order: parsedSpeakerOrder(),
           pause_between: pauseBetween,
+          thread_id: selectedThread?.id || null,
         }),
       });
       const data = await response.json();
@@ -339,11 +369,19 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100">
-      <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 px-5 py-6 sm:px-8">
+      <div className="mx-auto grid min-h-screen w-full max-w-[1500px] gap-6 px-5 py-6 lg:grid-cols-[280px_minmax(0,1fr)] lg:px-8">
+        <ThreadSidebar
+          threads={threads}
+          selectedThreadId={selectedThread?.id}
+          onSelect={loadThread}
+          onNew={startNewThread}
+        />
+
+        <main className="flex min-w-0 flex-col gap-6">
         <header className="flex flex-col gap-3 border-b border-neutral-800 pb-5 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">multichat</h1>
-            <p className="mt-1 text-sm text-neutral-400">Stage 6: debate and relay</p>
+            <p className="mt-1 text-sm text-neutral-400">Stage 7: thread persistence and reopen</p>
           </div>
 
           <div className="rounded-md border border-neutral-800 px-3 py-2 text-sm">
@@ -388,6 +426,11 @@ export default function App() {
           </div>
 
           <label htmlFor="prompt" className="text-sm font-medium text-neutral-300">Prompt</label>
+          {selectedThread && (
+            <p className="text-xs text-neutral-500">
+              Continuing thread #{selectedThread.id}: {selectedThread.title}
+            </p>
+          )}
           <textarea
             id="prompt"
             value={prompt}
@@ -420,8 +463,82 @@ export default function App() {
         ) : (
           <ColumnGrid providers={activeProviders} columns={columns} health={health} isLoading={isLoading} isStreaming={isStreaming} />
         )}
-      </main>
+        {selectedThread && <HistoryView thread={selectedThread} />}
+        </main>
+      </div>
     </div>
+  );
+}
+
+function ThreadSidebar({ threads, selectedThreadId, onSelect, onNew }) {
+  return (
+    <aside className="rounded-lg border border-neutral-800 bg-neutral-900/50 p-3 lg:sticky lg:top-6 lg:h-[calc(100vh-48px)] lg:overflow-y-auto">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
+          Threads
+        </h2>
+        <button
+          type="button"
+          onClick={onNew}
+          className="rounded-md border border-neutral-700 px-2 py-1 text-xs text-neutral-200 hover:border-neutral-500"
+        >
+          New
+        </button>
+      </div>
+      <div className="space-y-2">
+        {threads.length === 0 && (
+          <p className="text-sm text-neutral-500">No threads yet.</p>
+        )}
+        {threads.map((thread) => (
+          <button
+            key={thread.id}
+            type="button"
+            onClick={() => onSelect(thread.id)}
+            className={`w-full rounded-md border p-2 text-left text-sm transition ${
+              selectedThreadId === thread.id
+                ? "border-emerald-500/60 bg-emerald-500/10"
+                : "border-neutral-800 bg-neutral-950/40 hover:border-neutral-600"
+            }`}
+          >
+            <span className="block truncate font-medium text-neutral-200">
+              {thread.title || `Thread ${thread.id}`}
+            </span>
+            <span className="mt-1 block truncate text-xs text-neutral-500">
+              {thread.mode} · {thread.message_count} messages
+            </span>
+          </button>
+        ))}
+      </div>
+    </aside>
+  );
+}
+
+function HistoryView({ thread }) {
+  return (
+    <section className="space-y-3 border-t border-neutral-800 pt-5">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
+        Thread history
+      </h2>
+      {thread.messages.map((message) => (
+        <article
+          key={message.id}
+          className="rounded-lg border border-neutral-800 bg-neutral-900/40 p-3"
+        >
+          <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-neutral-500">
+            <span className="font-semibold uppercase text-neutral-300">
+              {message.provider
+                ? providerLabels[message.provider] || message.provider
+                : message.role}
+            </span>
+            {message.model && <span>{message.model}</span>}
+            {message.round !== null && <span>round {message.round}</span>}
+          </div>
+          <p className="whitespace-pre-wrap text-sm leading-6 text-neutral-100">
+            {message.content}
+          </p>
+        </article>
+      ))}
+    </section>
   );
 }
 
