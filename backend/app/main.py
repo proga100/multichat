@@ -12,6 +12,7 @@ allows the Vite dev server (localhost:5173) to talk to this during development.
 """
 from __future__ import annotations
 
+import asyncio
 import contextlib
 from collections.abc import AsyncIterator
 
@@ -23,7 +24,7 @@ from app.api.runs import router as runs_router
 from app.api.threads import router as threads_router
 from app.core.config import settings
 from app.core.db import init_db
-from app.telegram.bot import start_telegram_bot
+from app.telegram.bot import run_telegram_bot
 
 
 @contextlib.asynccontextmanager
@@ -31,17 +32,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # --- startup ---
     init_db()
 
-    # The Telegram app uses official async long-polling and stays inert unless
-    # TELEGRAM_BOT_TOKEN plus TELEGRAM_ALLOWED_USER_ID are configured.
-    telegram_bot = await start_telegram_bot()
+    # Telegram uses official async long-polling in the same event loop. It runs
+    # in the background so slow Telegram API startup cannot block the web app.
+    telegram_task = None
+    if settings.telegram_bot_token:
+        telegram_task = asyncio.create_task(run_telegram_bot())
 
     try:
         yield
     finally:
         # --- shutdown ---
-        if telegram_bot is not None:
-            with contextlib.suppress(Exception):
-                await telegram_bot.stop()
+        if telegram_task is not None:
+            telegram_task.cancel()
+            with contextlib.suppress(BaseException):
+                await telegram_task
 
 
 app = FastAPI(title="multichat", lifespan=lifespan)

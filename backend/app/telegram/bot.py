@@ -155,6 +155,11 @@ async def start_telegram_bot() -> TelegramBotHandle | None:
     application = (
         ApplicationBuilder()
         .token(settings.telegram_bot_token)
+        .connect_timeout(30)
+        .read_timeout(30)
+        .write_timeout(30)
+        .get_updates_connect_timeout(30)
+        .get_updates_read_timeout(30)
         .build()
     )
     application.add_handler(CommandHandler(["start", "help"], _help))
@@ -180,3 +185,14 @@ async def start_telegram_bot() -> TelegramBotHandle | None:
 
     logger.info("Telegram bot started.")
     return TelegramBotHandle(application=application)
+
+
+async def run_telegram_bot() -> None:
+    handle = await start_telegram_bot()
+    if handle is None:
+        return
+
+    try:
+        await asyncio.Event().wait()
+    finally:
+        await handle.stop()
