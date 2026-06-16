@@ -90,6 +90,14 @@ function threadTokenTotals(thread) {
   return hasTokens ? { prompt, output } : null;
 }
 
+function messageUsage(message) {
+  if (message.prompt_tokens == null && message.output_tokens == null) return null;
+  return {
+    prompt_tokens: message.prompt_tokens,
+    output_tokens: message.output_tokens,
+  };
+}
+
 async function copyText(text) {
   if (!text) return;
   try {
@@ -156,6 +164,100 @@ export default function App() {
     setRerunningProvider(null);
   }
 
+  function hydrateThreadState(thread) {
+    const nextColumns = createColumns();
+    const nextRounds = {};
+    const nextSynthesis = createSynthesis();
+    const nextScribe = createScribe();
+    const nextRelayTranscript = [];
+    const assistantMessages = thread.messages.filter((message) => message.role === "assistant");
+
+    if (thread.mode === "supermind") {
+      for (const message of assistantMessages) {
+        if (providerOrder.includes(message.provider) && message.round === 1) {
+          nextColumns[message.provider] = {
+            ...nextColumns[message.provider],
+            content: message.content,
+            model: message.model || "",
+            done: true,
+            usage: messageUsage(message),
+          };
+        } else if (message.provider === "scribe" || message.round === 3) {
+          nextScribe.content = message.content;
+          nextScribe.provider = message.provider || "scribe";
+        } else if (message.round === 2) {
+          nextSynthesis.content = message.content;
+          nextSynthesis.provider = message.provider || "";
+          nextSynthesis.usage = messageUsage(message);
+        }
+      }
+
+      if (!nextSynthesis.content && assistantMessages.some((message) => message.round === 1)) {
+        nextSynthesis.error =
+          "Unified response was not saved for this thread. The synthesis provider likely failed during the run.";
+      }
+    } else if (thread.mode === "compare" || thread.mode === "single") {
+      for (const message of assistantMessages) {
+        if (!providerOrder.includes(message.provider)) continue;
+        nextColumns[message.provider] = {
+          ...nextColumns[message.provider],
+          content: message.content,
+          model: message.model || "",
+          done: true,
+          usage: messageUsage(message),
+        };
+      }
+    } else if (thread.mode === "debate") {
+      const roundCounts = assistantMessages.reduce((counts, message) => {
+        if (message.round == null) return counts;
+        counts[message.round] = (counts[message.round] || 0) + 1;
+        return counts;
+      }, {});
+      const maxRound = Math.max(0, ...Object.keys(roundCounts).map(Number));
+
+      for (const message of assistantMessages) {
+        if (message.round === maxRound && roundCounts[message.round] === 1) {
+          nextSynthesis.content = message.content;
+          nextSynthesis.provider = message.provider || "";
+          nextSynthesis.usage = messageUsage(message);
+          continue;
+        }
+
+        if (!providerOrder.includes(message.provider)) continue;
+        const roundNumber = message.round || 0;
+        if (!nextRounds[roundNumber]) nextRounds[roundNumber] = createColumns();
+        nextRounds[roundNumber][message.provider] = {
+          ...nextRounds[roundNumber][message.provider],
+          content: message.content,
+          model: message.model || "",
+          done: true,
+          usage: messageUsage(message),
+        };
+      }
+    } else if (thread.mode === "relay") {
+      for (const message of assistantMessages) {
+        nextRelayTranscript.push({
+          speakerIndex: (message.round || nextRelayTranscript.length + 1) - 1,
+          provider: message.provider,
+          content: message.content,
+          fallbackProvider: null,
+          fallbackReason: null,
+        });
+      }
+    }
+
+    setColumns(nextColumns);
+    setDebateRounds(nextRounds);
+    setSynthesis(nextSynthesis);
+    setScribe(nextScribe);
+    setSupermindTab("unified");
+    setRelayTranscript(nextRelayTranscript);
+    setRunError(null);
+    setAwaitingHuman(null);
+    setHumanSteer("");
+    setRerunningProvider(null);
+  }
+
   async function loadThreads() {
     const response = await fetch("/api/threads");
     if (response.ok) {
@@ -172,7 +274,7 @@ export default function App() {
     setMode(thread.mode);
     setLastPrompt(latestUserMessage(thread));
     setPrompt("");
-    resetRunState();
+    hydrateThreadState(thread);
   }
 
   function startNewThread() {
