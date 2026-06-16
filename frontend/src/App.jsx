@@ -28,7 +28,14 @@ function createColumns() {
 }
 
 function createSynthesis() {
-  return { content: "", provider: "", fallbackProvider: null, fallbackReason: null, usage: null };
+  return {
+    content: "",
+    provider: "",
+    fallbackProvider: null,
+    fallbackReason: null,
+    usage: null,
+    error: null,
+  };
 }
 
 function providerModel(health, provider) {
@@ -95,6 +102,7 @@ export default function App() {
   const [columns, setColumns] = useState(createColumns);
   const [debateRounds, setDebateRounds] = useState({});
   const [synthesis, setSynthesis] = useState(createSynthesis);
+  const [supermindTab, setSupermindTab] = useState("unified");
   const [relayTranscript, setRelayTranscript] = useState([]);
   const [runError, setRunError] = useState(null);
   const [awaitingHuman, setAwaitingHuman] = useState(null);
@@ -106,7 +114,10 @@ export default function App() {
   const [isStreaming, setIsStreaming] = useState(false);
   const streamRef = useRef(null);
 
-  const activeProviders = mode === "compare" || mode === "debate" ? providerOrder : [provider];
+  const activeProviders =
+    mode === "compare" || mode === "debate" || mode === "supermind"
+      ? providerOrder
+      : [provider];
 
   useEffect(() => {
     fetch("/health")
@@ -124,6 +135,7 @@ export default function App() {
     setColumns(createColumns());
     setDebateRounds({});
     setSynthesis(createSynthesis());
+    setSupermindTab("unified");
     setRelayTranscript([]);
     setRunError(null);
     setAwaitingHuman(null);
@@ -284,6 +296,15 @@ export default function App() {
             return;
           }
 
+          if (run.mode === "supermind" && event.round === 2) {
+            setSynthesis((current) => ({
+              ...current,
+              fallbackProvider: event.fallback_provider,
+              fallbackReason: event.message,
+            }));
+            return;
+          }
+
           if (run.mode === "relay") {
             setRelayTranscript((current) => {
               const index = current.findIndex(
@@ -325,6 +346,16 @@ export default function App() {
             ]);
             return;
           }
+
+          if (run.mode === "supermind" && event.round === 2) {
+            setSynthesis((current) => ({
+              ...current,
+              provider: event.provider,
+              error: event.message || "Synthesis failed.",
+            }));
+            return;
+          }
+
           setColumns((current) => ({
             ...current,
             [event.provider]: {
@@ -513,7 +544,7 @@ export default function App() {
         <header className="flex flex-col gap-3 border-b border-neutral-800 pb-5 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">multichat</h1>
-            <p className="mt-1 text-sm text-neutral-400">Stage 10: daily-use controls</p>
+            <p className="mt-1 text-sm text-neutral-400">Self-hosted AI boardroom</p>
           </div>
 
           <div className="rounded-md border border-neutral-800 px-3 py-2 text-sm">
@@ -528,6 +559,7 @@ export default function App() {
             <Control label="Mode" htmlFor="mode">
               <select id="mode" value={mode} onChange={(event) => setMode(event.target.value)} disabled={isLoading || isStreaming} className="control">
                 <option value="compare">Compare</option>
+                <option value="supermind">Super Mind</option>
                 <option value="single">Single provider</option>
                 <option value="debate">Debate</option>
                 <option value="relay">Relay</option>
@@ -597,7 +629,18 @@ export default function App() {
           </form>
         )}
 
-        {mode === "debate" ? (
+        {mode === "supermind" ? (
+          <SuperMindView
+            tab={supermindTab}
+            setTab={setSupermindTab}
+            columns={columns}
+            synthesis={synthesis}
+            health={health}
+            isLoading={isLoading}
+            isStreaming={isStreaming}
+            onCopy={copyText}
+          />
+        ) : mode === "debate" ? (
           <DebateView rounds={debateRounds} synthesis={synthesis} health={health} onCopy={copyText} />
         ) : mode === "relay" ? (
           <RelayView transcript={relayTranscript} onCopy={copyText} />
@@ -816,6 +859,112 @@ function FallbackBadge({ column }) {
   );
 }
 
+function SuperMindView({
+  tab,
+  setTab,
+  columns,
+  synthesis,
+  health,
+  isLoading,
+  isStreaming,
+  onCopy,
+}) {
+  return (
+    <section className="space-y-4">
+      <div className="flex flex-col gap-3 rounded-lg border border-violet-500/30 bg-violet-500/10 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-violet-200">
+            Super Mind
+          </h2>
+        </div>
+        <div className="grid w-full grid-cols-2 rounded-md border border-violet-500/30 bg-neutral-950/70 p-1 sm:w-auto">
+          <button
+            type="button"
+            onClick={() => setTab("unified")}
+            className={`rounded px-3 py-2 text-sm font-medium transition ${
+              tab === "unified"
+                ? "bg-violet-400 text-neutral-950"
+                : "text-violet-100 hover:bg-violet-500/10"
+            }`}
+          >
+            Unified
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("individual")}
+            className={`rounded px-3 py-2 text-sm font-medium transition ${
+              tab === "individual"
+                ? "bg-violet-400 text-neutral-950"
+                : "text-violet-100 hover:bg-violet-500/10"
+            }`}
+          >
+            Individual
+          </button>
+        </div>
+      </div>
+
+      {tab === "unified" ? (
+        <SynthesisCard
+          title="Unified Response"
+          emptyText={
+            isLoading || isStreaming
+              ? "Reading individual responses before writing the unified answer..."
+              : "The unified answer will appear here."
+          }
+          synthesis={synthesis}
+          onCopy={onCopy}
+        />
+      ) : (
+        <ColumnGrid
+          providers={providerOrder}
+          columns={columns}
+          health={health}
+          isLoading={isLoading}
+          isStreaming={isStreaming}
+          onCopy={onCopy}
+        />
+      )}
+    </section>
+  );
+}
+
+function SynthesisCard({ title = "Synthesis", emptyText, synthesis, onCopy }) {
+  return (
+    <section className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4">
+      <div className="mb-3 flex flex-col gap-3 border-b border-emerald-500/20 pb-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-emerald-200">
+            {title}
+          </h2>
+          <span className="text-xs text-emerald-200/70">
+            {providerLabels[synthesis.provider] || synthesis.provider || "Synthesis provider"}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => onCopy?.(synthesis.content)}
+          disabled={!synthesis.content}
+          className="rounded-md border border-emerald-500/30 px-2 py-1 text-xs text-emerald-100 hover:border-emerald-300 disabled:cursor-not-allowed disabled:text-emerald-900"
+        >
+          Copy
+        </button>
+      </div>
+      <FallbackBadge column={synthesis} />
+      {synthesis.error && (
+        <p className="whitespace-pre-wrap text-sm text-red-300">{synthesis.error}</p>
+      )}
+      {!synthesis.error && synthesis.content && (
+        <p className="whitespace-pre-wrap text-sm leading-6 text-neutral-100">
+          {synthesis.content}
+        </p>
+      )}
+      {!synthesis.error && !synthesis.content && (
+        <p className="text-sm text-neutral-400">{emptyText || "Synthesis will appear here."}</p>
+      )}
+    </section>
+  );
+}
+
 function DebateView({ rounds, synthesis, health, onCopy }) {
   const roundKeys = Object.keys(rounds).map(Number).sort((a, b) => a - b);
   return (
@@ -826,19 +975,7 @@ function DebateView({ rounds, synthesis, health, onCopy }) {
           <ColumnGrid providers={providerOrder} columns={rounds[round]} health={health} isLoading={false} isStreaming={false} onCopy={onCopy} />
         </section>
       ))}
-      <section className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4">
-        <div className="mb-3 flex flex-col gap-3 border-b border-emerald-500/20 pb-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-emerald-200">Synthesis</h2>
-            <span className="text-xs text-emerald-200/70">{providerLabels[synthesis.provider] || synthesis.provider}</span>
-          </div>
-          <button type="button" onClick={() => onCopy?.(synthesis.content)} disabled={!synthesis.content} className="rounded-md border border-emerald-500/30 px-2 py-1 text-xs text-emerald-100 hover:border-emerald-300 disabled:cursor-not-allowed disabled:text-emerald-900">
-            Copy
-          </button>
-        </div>
-        <FallbackBadge column={synthesis} />
-        {synthesis.content ? <p className="whitespace-pre-wrap text-sm leading-6 text-neutral-100">{synthesis.content}</p> : <p className="text-sm text-neutral-400">Synthesis will appear here.</p>}
-      </section>
+      <SynthesisCard synthesis={synthesis} onCopy={onCopy} />
     </div>
   );
 }

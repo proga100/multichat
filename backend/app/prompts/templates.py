@@ -36,6 +36,18 @@ DEBATE_SYNTHESIS = (
     "recommendation. Be decisive."
 )
 
+# --- SUPER MIND (parallel answers + one unified response) -------------------
+
+# {answers} = all individual model answers, formatted by orchestrator.
+SUPERMIND_SYNTHESIS = (
+    "Below are individual answers from several AI models responding to the same "
+    "user request:\n\n{answers}\n\nCreate ONE unified answer for the user. Do "
+    "not mention that you are combining model outputs unless it is useful. "
+    "Remove duplication, preserve the strongest ideas, call out important "
+    "disagreements or uncertainty, and make the final response practical and "
+    "decisive. Use clear structure when it improves readability."
+)
+
 # --- EXPERT (parallel topology, different role per column) ------------------
 # {role} is injected per-provider, e.g. "a senior security engineer".
 EXPERT_ROLE = (

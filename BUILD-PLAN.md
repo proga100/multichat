@@ -298,6 +298,19 @@ Pure frontend/UX, no architecture impact: keyboard send, copy a column,
 regenerate one provider without rerunning all three, per-run token/cost counter
 (read the token columns), edit-last-prompt-and-rerun.
 
+### Stage 11 — Super Mind unified + individual view
+
+- Implement **Super Mind** as parallel individual answers followed by a separate
+  synthesis pass from `SYNTHESIS_PROVIDER`.
+- Persist individual answers as round 1 and the unified response as round 2.
+- Frontend: show a segmented `Unified | Individual` view. `Unified` defaults to
+  the synthesized answer; `Individual` shows raw provider outputs.
+- Telegram: support `supermind: <prompt>` with individual completion followed
+  by the unified response.
+- **Acceptance:** run a Super Mind prompt end to end; individual provider
+  responses stream first, then the unified response appears; thread history
+  stores all four assistant messages.
+
 ---
 
 ## 5. Suggested file/module layout

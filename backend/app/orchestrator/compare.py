@@ -17,10 +17,11 @@ async def _stream_provider(
     provider_name: ProviderName,
     messages: list[Message],
     premium: bool,
+    round_number: int,
     queue: asyncio.Queue[dict[str, object]],
 ) -> None:
     try:
-        async for event in stream_provider_events(provider_name, messages, premium):
+        async for event in stream_provider_events(provider_name, messages, premium, round_number):
             await queue.put(event)
     except Exception as exc:
         await queue.put(
@@ -37,10 +38,11 @@ async def stream_compare(
     messages: list[Message],
     premium: bool = False,
     providers: tuple[ProviderName, ...] = COMPARE_PROVIDERS,
+    round_number: int = 0,
 ) -> AsyncIterator[dict[str, object]]:
     queue: asyncio.Queue[dict[str, object]] = asyncio.Queue()
     tasks = [
-        asyncio.create_task(_stream_provider(provider, messages, premium, queue))
+        asyncio.create_task(_stream_provider(provider, messages, premium, round_number, queue))
         for provider in providers
     ]
     finished = 0

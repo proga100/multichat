@@ -9,9 +9,10 @@ from app.core.types import Message, ProviderName, Role
 from app.orchestrator.compare import COMPARE_PROVIDERS, stream_compare
 from app.orchestrator.debate import stream_debate
 from app.orchestrator.relay import stream_relay_speaker
+from app.orchestrator.supermind import stream_supermind
 from app.providers.factory import resolve_model
 
-TelegramMode = Literal["compare", "debate", "relay"]
+TelegramMode = Literal["compare", "debate", "relay", "supermind"]
 
 
 @dataclass(frozen=True)
@@ -60,6 +61,11 @@ async def run_telegram_discussion(
 
     if command.mode == "debate":
         async for result in _run_debate(thread_id, command):
+            yield result
+        return
+
+    if command.mode == "supermind":
+        async for result in _run_supermind(thread_id, command):
             yield result
         return
 
@@ -166,6 +172,72 @@ async def _run_debate(
             yield TelegramResult(
                 title="Synthesis",
                 body=content or "[no synthesis]",
+            )
+            continue
+
+        if event_type == "error":
+            yield TelegramResult(
+                title=f"Error: {_format_provider(str(event['provider']))}",
+                body=str(event.get("message", "Provider failed.")),
+            )
+
+
+async def _run_supermind(
+    thread_id: int,
+    command: TelegramCommand,
+) -> AsyncIterator[TelegramResult]:
+    collected: dict[tuple[str, int], list[str]] = {}
+    individual_answers: dict[str, str] = {}
+    synthesis: list[str] = []
+    synthesis_provider = ""
+
+    async for event in stream_supermind(command.prompt, premium=command.premium):
+        event_type = str(event["type"])
+
+        if event_type == "delta":
+            key = (str(event["provider"]), int(event["round"]))
+            collected.setdefault(key, []).append(str(event["delta"]))
+            continue
+
+        if event_type == "provider_done":
+            provider = str(event["provider"])
+            round_number = int(event["round"])
+            content = "".join(collected.get((provider, round_number), []))
+            persist_assistant_message(
+                thread_id=thread_id,
+                provider=provider,
+                model=resolve_model(ProviderName(provider), command.premium),
+                content=content,
+                round_number=round_number,
+            )
+            individual_answers[provider] = content
+            continue
+
+        if event_type == "round_done":
+            yield TelegramResult(
+                title="Individual responses complete",
+                body=_format_answers(individual_answers),
+            )
+            continue
+
+        if event_type == "synthesis_delta":
+            synthesis.append(str(event["delta"]))
+            synthesis_provider = str(event["provider"])
+            continue
+
+        if event_type == "synthesis_done":
+            provider = synthesis_provider or str(event["provider"])
+            content = "".join(synthesis)
+            persist_assistant_message(
+                thread_id=thread_id,
+                provider=provider,
+                model=resolve_model(ProviderName(provider), command.premium),
+                content=content,
+                round_number=int(event["round"]),
+            )
+            yield TelegramResult(
+                title="Unified response",
+                body=content or "[no unified response]",
             )
             continue
 

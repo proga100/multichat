@@ -1,14 +1,14 @@
 # multichat
 
 A personal, self-hosted multi-model chat orchestrator. Send one prompt to
-Claude, GPT, and Gemini and see their answers side by side (**Compare**), or
-have them critique each other across rounds and synthesize a final answer
-(**Debate**). BYOK — your own API keys, in a local `.env`. Single user, no auth,
-runs on your Mac.
+Claude, GPT, and Gemini and see their answers side by side (**Compare**), merge
+their individual answers into one polished response (**Super Mind**), or have
+them critique each other across rounds and synthesize a final answer
+(**Debate**). BYOK — your own API keys in `.env`. Single user, no auth.
 
-> Status: **Stage 10 complete.** Compare, single-provider streaming, debate,
-> relay, persisted thread reopen, Telegram, and daily-use UI controls are
-> implemented.
+> Status: **Stage 11 complete.** Compare, Super Mind, single-provider streaming,
+> debate, relay, persisted thread reopen, Telegram, Docker deployment, and
+> daily-use UI controls are implemented.
 
 ## Architecture (the part that matters)
 
@@ -48,7 +48,7 @@ multichat/
 │       │   ├── anthropic_provider.py  # stub -> implemented step 2/3
 │       │   ├── openai_provider.py     # stub -> implemented step 4
 │       │   └── gemini_provider.py     # stub -> implemented step 4
-│       ├── orchestrator/     # compare/debate/relay loops
+│       ├── orchestrator/     # compare/supermind/debate/relay loops
 │       ├── api/              # run, SSE, and thread endpoints
 │       ├── telegram/         # long-polling Telegram front-end
 │       └── prompts/
@@ -117,6 +117,7 @@ other users. Supported messages:
 
 ```text
 compare: your prompt
+supermind: your prompt
 debate 2: your prompt
 relay: your prompt
 ```
@@ -181,4 +182,4 @@ stop."* Codex works stage by stage, running each stage's acceptance checks.
 8. Telegram bot front-end (long-polling, your-user-only). ✅
 9. *(optional)* Mac packaging (menu-bar or Tauri).
 10. Ergonomics: keyboard send, copy, rerun, and token metadata. ✅
-```
+11. **Super Mind**: unified synthesis tab plus individual model responses. ✅

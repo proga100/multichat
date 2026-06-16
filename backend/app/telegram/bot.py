@@ -25,13 +25,14 @@ logger = logging.getLogger(__name__)
 HELP_TEXT = (
     "Send one of:\n"
     "compare: your prompt\n"
+    "supermind: your prompt\n"
     "debate 2: your prompt\n"
     "relay: your prompt"
 )
 
 MAX_TELEGRAM_MESSAGE = 3900
 DEBATE_RE = re.compile(r"^debate(?:\s+(\d+))?\s*:\s*(.+)$", re.IGNORECASE | re.DOTALL)
-MODE_RE = re.compile(r"^(compare|relay)\s*:\s*(.+)$", re.IGNORECASE | re.DOTALL)
+MODE_RE = re.compile(r"^(compare|supermind|relay)\s*:\s*(.+)$", re.IGNORECASE | re.DOTALL)
 
 
 @dataclass
@@ -62,7 +63,7 @@ def parse_telegram_command(text: str) -> TelegramCommand | None:
     if mode_match:
         mode = mode_match.group(1).lower()
         prompt = mode_match.group(2).strip()
-        if mode in {"compare", "relay"} and prompt:
+        if mode in {"compare", "supermind", "relay"} and prompt:
             return TelegramCommand(mode=mode, prompt=prompt)  # type: ignore[arg-type]
         return None
 
