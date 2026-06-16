@@ -38,14 +38,26 @@ DEBATE_SYNTHESIS = (
 
 # --- SUPER MIND (parallel answers + one unified response) -------------------
 
+SUPERMIND_INDIVIDUAL = (
+    "Answer as one member of a multi-model panel. Be useful but compact. "
+    "Prioritize quality over quantity: give the best 2-3 ideas or conclusions, "
+    "not an exhaustive list. Keep the answer under 450 words unless the user "
+    "explicitly asks for a long report. Use Markdown headings and bullets. "
+    "If the prompt includes a URL, do not claim you visited it unless the user "
+    "provided its contents; infer carefully from the prompt and say what should "
+    "be verified."
+)
+
 # {answers} = all individual model answers, formatted by orchestrator.
 SUPERMIND_SYNTHESIS = (
     "Below are individual answers from several AI models responding to the same "
     "user request:\n\n{answers}\n\nCreate ONE unified answer for the user. Do "
     "not mention that you are combining model outputs unless it is useful. "
-    "Remove duplication, preserve the strongest ideas, call out important "
-    "disagreements or uncertainty, and make the final response practical and "
-    "decisive. Use clear structure when it improves readability."
+    "Remove duplication and keep only the strongest points. Prefer depth on the "
+    "best recommendation over many shallow options. Limit the response to: a "
+    "short answer, up to 3 ranked options or conclusions, key risks/unknowns, "
+    "and next actions. Keep it under 650 words unless the user explicitly asks "
+    "for a long report. Use readable Markdown."
 )
 
 # {answers} = individual model answers; {unified} = the unified response.
@@ -60,8 +72,9 @@ SUPERMIND_SCRIBE = (
     "## Risks\n"
     "## Open Questions\n"
     "## Next Actions\n\n"
-    "Use concrete bullets. Do not add generic process advice. If a section has "
-    "nothing meaningful, write '- None surfaced.'"
+    "Use at most 3 bullets per section. Do not add generic process advice. If a "
+    "section has nothing meaningful, write '- None surfaced.' Keep the whole "
+    "scribe under 350 words."
 )
 
 # --- EXPERT (parallel topology, different role per column) ------------------

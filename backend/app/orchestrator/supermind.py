@@ -6,17 +6,24 @@ from app.core.config import settings
 from app.core.types import Message, ProviderName, Role
 from app.orchestrator.compare import COMPARE_PROVIDERS, stream_compare
 from app.orchestrator.provider_stream import stream_provider_events
-from app.prompts.templates import SUPERMIND_SCRIBE, SUPERMIND_SYNTHESIS
+from app.prompts.templates import (
+    SUPERMIND_INDIVIDUAL,
+    SUPERMIND_SCRIBE,
+    SUPERMIND_SYNTHESIS,
+)
 
 
-def _format_individual_answers(answers: dict[ProviderName, str]) -> str:
+def _format_individual_answers(
+    answers: dict[ProviderName, str],
+    max_chars_per_answer: int = 1800,
+) -> str:
     return "\n\n".join(
-        f"{provider.value}:\n{content or '[no answer]'}"
+        f"{provider.value}:\n{_excerpt(content, max_chars_per_answer) or '[no answer]'}"
         for provider, content in answers.items()
     )
 
 
-def _excerpt(content: str, limit: int = 1600) -> str:
+def _excerpt(content: str, limit: int = 1200) -> str:
     text = content.strip()
     if len(text) <= limit:
         return text
@@ -29,7 +36,7 @@ def _fallback_unified_response(prompt: str, answers: dict[ProviderName, str]) ->
         "",
         f"Original request: {prompt}",
         "",
-        "## Best Available Combined Answer",
+            "## Best Available Answer",
     ]
 
     completed = [(provider, content) for provider, content in answers.items() if content.strip()]
@@ -40,24 +47,15 @@ def _fallback_unified_response(prompt: str, answers: dict[ProviderName, str]) ->
     longest_provider, longest_answer = max(completed, key=lambda item: len(item[1]))
     blocks.extend(
         [
-            f"The most complete individual answer came from {longest_provider.value}. Use it as the primary draft, then review the other individual answers for alternatives and missing details.",
+            f"The most complete individual answer came from {longest_provider.value}. Here is the compact version to use first:",
             "",
-            _excerpt(longest_answer, 2200),
-            "",
-            "## Individual Answer Excerpts",
+            _excerpt(longest_answer, 1400),
         ]
     )
 
-    for provider, content in completed:
-        if provider == longest_provider:
-            continue
-        blocks.extend(
-            [
-                "",
-                f"### {provider.value}",
-                _excerpt(content),
-            ]
-        )
+    other_providers = [provider.value for provider, _ in completed if provider != longest_provider]
+    if other_providers:
+        blocks.extend(["", "## Also Review", f"- Individual tab includes additional perspectives from {', '.join(other_providers)}."])
 
     return "\n".join(blocks)
 
@@ -89,8 +87,6 @@ def _fallback_scribe_notes(prompt: str, answers: dict[ProviderName, str], unifie
             "- Check Individual responses for missing ideas.",
             "- Rerun Super Mind after Anthropic/OpenAI/Gemini quota issues are fixed.",
             "",
-            "## Unified Fallback Excerpt",
-            _excerpt(unified, 1200),
         ]
     )
 
@@ -99,7 +95,10 @@ async def stream_supermind(
     prompt: str,
     premium: bool = False,
 ) -> AsyncIterator[dict[str, object]]:
-    messages = [Message(role=Role.USER, content=prompt)]
+    messages = [
+        Message(role=Role.SYSTEM, content=SUPERMIND_INDIVIDUAL),
+        Message(role=Role.USER, content=prompt),
+    ]
     answers: dict[ProviderName, str] = {}
     collected: dict[ProviderName, list[str]] = {}
 
@@ -124,7 +123,9 @@ async def stream_supermind(
     synthesis_messages = [
         Message(
             Role.SYSTEM,
-            SUPERMIND_SYNTHESIS.format(answers=_format_individual_answers(answers)),
+            SUPERMIND_SYNTHESIS.format(
+                answers=_format_individual_answers(answers, max_chars_per_answer=1600),
+            ),
         ),
         Message(Role.USER, prompt),
     ]
@@ -191,8 +192,8 @@ async def stream_supermind(
             Role.SYSTEM,
             SUPERMIND_SCRIBE.format(
                 prompt=prompt,
-                answers=_format_individual_answers(answers),
-                unified="".join(synthesis_content),
+                answers=_format_individual_answers(answers, max_chars_per_answer=900),
+                unified=_excerpt("".join(synthesis_content), 1400),
             ),
         ),
         Message(Role.USER, "Write the scribe notes now."),
