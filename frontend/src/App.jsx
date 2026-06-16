@@ -1,12 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
+import { openRunStream } from "./lib/sse";
 
 export default function App() {
   const [health, setHealth] = useState(null);
   const [healthError, setHealthError] = useState(null);
   const [prompt, setPrompt] = useState("");
-  const [answer, setAnswer] = useState(null);
+  const [answer, setAnswer] = useState("");
+  const [model, setModel] = useState("");
   const [chatError, setChatError] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const streamRef = useRef(null);
 
   useEffect(() => {
     fetch("/health")
@@ -15,17 +20,24 @@ export default function App() {
       .catch((e) => setHealthError(String(e)));
   }, []);
 
+  useEffect(() => {
+    return () => streamRef.current?.close();
+  }, []);
+
   async function handleSubmit(event) {
     event.preventDefault();
     const trimmed = prompt.trim();
-    if (!trimmed || isLoading) return;
+    if (!trimmed || isLoading || isStreaming) return;
 
     setIsLoading(true);
-    setAnswer(null);
+    setIsStreaming(false);
+    setAnswer("");
+    setModel("");
     setChatError(null);
+    streamRef.current?.close();
 
     try {
-      const response = await fetch("/api/chat/once", {
+      const response = await fetch("/api/runs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: trimmed }),
@@ -34,11 +46,26 @@ export default function App() {
       if (!response.ok) {
         throw new Error(data.detail || "Request failed");
       }
-      setAnswer(data);
+      setModel(data.model);
+      setIsStreaming(true);
+
+      streamRef.current = openRunStream(data.run_id, {
+        onDelta: (event) => {
+          setAnswer((current) => current + event.delta);
+        },
+        onError: (event) => {
+          setChatError(event.message || "Stream failed.");
+          setIsStreaming(false);
+        },
+        onRunDone: () => {
+          setIsStreaming(false);
+          setIsLoading(false);
+        },
+      });
     } catch (error) {
       setChatError(error.message || String(error));
-    } finally {
       setIsLoading(false);
+      setIsStreaming(false);
     }
   }
 
@@ -49,7 +76,7 @@ export default function App() {
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">multichat</h1>
             <p className="mt-1 text-sm text-neutral-400">
-              Stage 2: Claude non-streaming check
+              Stage 3: Claude streaming check
             </p>
           </div>
 
@@ -84,10 +111,10 @@ export default function App() {
           <div className="flex justify-end">
             <button
               type="submit"
-              disabled={isLoading || !prompt.trim()}
+              disabled={isLoading || isStreaming || !prompt.trim()}
               className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-neutral-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-neutral-700 disabled:text-neutral-400"
             >
-              {isLoading ? "Thinking..." : "Ask Claude"}
+              {isStreaming ? "Streaming..." : isLoading ? "Starting..." : "Ask Claude"}
             </button>
           </div>
         </form>
@@ -99,17 +126,17 @@ export default function App() {
                 Anthropic
               </h2>
               <span className="text-xs text-neutral-500">
-                {answer?.model || health?.anthropic_model || "Claude"}
+                {model || health?.anthropic_model || "Claude"}
               </span>
             </div>
 
             {chatError && (
               <p className="whitespace-pre-wrap text-sm text-red-300">{chatError}</p>
             )}
-            {!chatError && isLoading && (
-              <p className="text-sm text-neutral-400">Waiting for full response...</p>
+            {!chatError && (isLoading || isStreaming) && !answer && (
+              <p className="text-sm text-neutral-400">Waiting for stream...</p>
             )}
-            {!chatError && !isLoading && !answer && (
+            {!chatError && !isLoading && !isStreaming && !answer && (
               <p className="text-sm text-neutral-500">The answer will appear here.</p>
             )}
             {answer && (

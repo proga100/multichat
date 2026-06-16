@@ -1,8 +1,4 @@
-"""Anthropic provider implementation.
-
-Stage 2 uses the non-streaming Messages API. Stage 3 will replace `stream()`
-with the SDK streaming surface, while callers keep using `BaseProvider`.
-"""
+"""Anthropic provider implementation."""
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
@@ -56,15 +52,19 @@ class AnthropicProvider(BaseProvider):
         system = "\n\n".join(system_parts) if system_parts else None
         return system, anthropic_messages
 
-    async def complete(self, messages: list[Message]) -> str:
+    def _create_args(self, messages: list[Message]) -> dict[str, object]:
         system, anthropic_messages = self._translate_messages(messages)
-        create_args = {
+        create_args: dict[str, object] = {
             "model": self.model,
             "max_tokens": settings.anthropic_max_tokens,
             "messages": anthropic_messages,
         }
         if system is not None:
             create_args["system"] = system
+        return create_args
+
+    async def complete(self, messages: list[Message]) -> str:
+        create_args = self._create_args(messages)
 
         try:
             response = await self._client.messages.create(**create_args)
@@ -81,7 +81,12 @@ class AnthropicProvider(BaseProvider):
         return "".join(text_parts)
 
     async def stream(self, messages: list[Message]) -> AsyncIterator[str]:
-        raise NotImplementedError(
-            "AnthropicProvider.stream not implemented yet — arrives in step 3."
-        )
-        yield  # pragma: no cover  (marks this as an async generator)
+        create_args = self._create_args(messages)
+
+        try:
+            async with self._client.messages.stream(**create_args) as stream:
+                async for text in stream.text_stream:
+                    if text:
+                        yield text
+        except AnthropicError as exc:
+            raise ProviderCallError(f"Anthropic stream failed: {exc}") from exc
