@@ -4,8 +4,7 @@ import asyncio
 from collections.abc import AsyncIterator
 
 from app.core.types import Message, ProviderName
-from app.providers.base import ProviderCallError, ProviderConfigurationError
-from app.providers.factory import make_provider
+from app.orchestrator.provider_stream import stream_provider_events
 
 COMPARE_PROVIDERS = (
     ProviderName.ANTHROPIC,
@@ -21,32 +20,8 @@ async def _stream_provider(
     queue: asyncio.Queue[dict[str, object]],
 ) -> None:
     try:
-        provider = make_provider(provider_name, premium=premium)
-        async for delta in provider.stream(messages):
-            await queue.put(
-                {
-                    "type": "delta",
-                    "provider": provider_name.value,
-                    "round": 0,
-                    "delta": delta,
-                }
-            )
-        await queue.put(
-            {
-                "type": "provider_done",
-                "provider": provider_name.value,
-                "round": 0,
-            }
-        )
-    except (ProviderConfigurationError, ProviderCallError) as exc:
-        await queue.put(
-            {
-                "type": "error",
-                "provider": provider_name.value,
-                "round": 0,
-                "message": str(exc),
-            }
-        )
+        async for event in stream_provider_events(provider_name, messages, premium):
+            await queue.put(event)
     except Exception as exc:
         await queue.put(
             {

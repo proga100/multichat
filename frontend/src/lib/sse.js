@@ -10,6 +10,10 @@ export function openRunStream(runId, options, handlers) {
     handlers.onProviderDone?.(JSON.parse(event.data));
   });
 
+  source.addEventListener("fallback_start", (event) => {
+    handlers.onFallbackStart?.(JSON.parse(event.data));
+  });
+
   source.addEventListener("error", (event) => {
     if (event.data) {
       handlers.onError?.(JSON.parse(event.data));

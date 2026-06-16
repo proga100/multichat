@@ -11,8 +11,8 @@ from pydantic import BaseModel, Field
 from app.core.db import get_connection
 from app.core.types import Message, ProviderName, Role
 from app.orchestrator.compare import COMPARE_PROVIDERS, stream_compare
-from app.providers.base import ProviderCallError, ProviderConfigurationError
-from app.providers.factory import make_provider, resolve_model
+from app.orchestrator.provider_stream import stream_provider_events
+from app.providers.factory import resolve_model
 
 router = APIRouter(prefix="/api/runs", tags=["runs"])
 
@@ -126,31 +126,10 @@ async def stream_run(run_id: int, request: Request) -> StreamingResponse:
             provider_choice = ProviderName.ANTHROPIC
 
         provider_name = provider_choice.value
-        try:
-            provider = make_provider(provider_choice)
-
-            async for delta in provider.stream(messages):
-                if await request.is_disconnected():
-                    return
-                yield _sse(
-                    {
-                        "type": "delta",
-                        "provider": provider_name,
-                        "round": 0,
-                        "delta": delta,
-                    }
-                )
-
-            yield _sse({"type": "provider_done", "provider": provider_name, "round": 0})
-        except (ProviderConfigurationError, ProviderCallError) as exc:
-            yield _sse(
-                {
-                    "type": "error",
-                    "provider": provider_name,
-                    "round": 0,
-                    "message": str(exc),
-                }
-            )
+        async for event in stream_provider_events(provider_choice, messages):
+            if await request.is_disconnected():
+                return
+            yield _sse(event)
 
         yield _sse({"type": "run_done"})
 

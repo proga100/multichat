@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     # Debate-mode synthesis: which provider writes the final combined answer.
     synthesis_provider: str = "anthropic"
 
+    # Development-only fallback. When enabled, orchestrators can substitute this
+    # provider after a requested provider fails, while preserving visible labels.
+    dev_fallback_enabled: bool = False
+    dev_provider_fallback: str = "gemini"
+
     # Telegram (step 8)
     telegram_bot_token: str = ""
     telegram_allowed_user_id: int | None = None

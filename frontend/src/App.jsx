@@ -14,7 +14,14 @@ function createColumns() {
   return Object.fromEntries(
     providerOrder.map((provider) => [
       provider,
-      { content: "", error: null, done: false, model: "" },
+      {
+        content: "",
+        error: null,
+        done: false,
+        model: "",
+        fallbackProvider: null,
+        fallbackReason: null,
+      },
     ]),
   );
 }
@@ -93,6 +100,19 @@ export default function App() {
               [event.provider]: {
                 ...current[event.provider],
                 content: current[event.provider].content + event.delta,
+                fallbackProvider:
+                  event.fallback_provider ||
+                  current[event.provider].fallbackProvider,
+              },
+            }));
+          },
+          onFallbackStart: (event) => {
+            setColumns((current) => ({
+              ...current,
+              [event.provider]: {
+                ...current[event.provider],
+                fallbackProvider: event.fallback_provider,
+                fallbackReason: event.message,
               },
             }));
           },
@@ -245,6 +265,15 @@ export default function App() {
                     {column.model || providerModel(health, providerName)}
                   </span>
                 </div>
+
+                {column.fallbackProvider && (
+                  <p
+                    className="mb-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs text-amber-200"
+                    title={column.fallbackReason || undefined}
+                  >
+                    via {providerLabels[column.fallbackProvider]} fallback
+                  </p>
+                )}
 
                 {column.error && (
                   <p className="whitespace-pre-wrap text-sm text-red-300">
