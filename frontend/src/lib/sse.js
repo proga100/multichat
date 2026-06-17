@@ -14,6 +14,10 @@ export function openRunStream(runId, options, handlers) {
     handlers.onRoundDone?.(JSON.parse(event.data));
   });
 
+  source.addEventListener("leaderboard", (event) => {
+    handlers.onLeaderboard?.(JSON.parse(event.data));
+  });
+
   source.addEventListener("synthesis_start", (event) => {
     handlers.onSynthesisStart?.(JSON.parse(event.data));
   });

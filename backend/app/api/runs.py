@@ -17,6 +17,7 @@ from app.core.persistence import (
 )
 from app.core.types import Message, ProviderName, Role
 from app.orchestrator.compare import COMPARE_PROVIDERS, stream_compare
+from app.orchestrator.council import stream_council
 from app.orchestrator.debate import stream_debate
 from app.orchestrator.provider_stream import stream_provider_events
 from app.orchestrator.relay import append_human_steer, stream_relay_speaker
@@ -43,7 +44,7 @@ RELAY_STATES: dict[int, RelayState] = {}
 class CreateRunRequest(BaseModel):
     prompt: str = Field(min_length=1)
     thread_id: int | None = None
-    mode: Literal["compare", "single", "debate", "relay", "supermind"] = "compare"
+    mode: Literal["compare", "single", "debate", "relay", "supermind", "council"] = "compare"
     premium: bool = False
     provider: ProviderName = ProviderName.ANTHROPIC
     rounds: int = Field(default=2, ge=1, le=5)
@@ -61,7 +62,7 @@ class CreateRunResponse(BaseModel):
     thread_id: int
     provider: ProviderName
     model: str
-    mode: Literal["compare", "single", "debate", "relay", "supermind"]
+    mode: Literal["compare", "single", "debate", "relay", "supermind", "council"]
     providers: list[ProviderRunInfo]
     rounds: int
     speaker_order: list[ProviderName]
@@ -76,7 +77,7 @@ def _sse(payload: dict[str, object]) -> str:
 async def create_run(request: CreateRunRequest) -> CreateRunResponse:
     providers = (
         list(COMPARE_PROVIDERS)
-        if request.mode in {"compare", "debate", "supermind"}
+        if request.mode in {"compare", "debate", "supermind", "council"}
         else request.speaker_order
         if request.mode == "relay"
         else [request.provider]
@@ -251,6 +252,45 @@ async def stream_run(run_id: int, request: Request) -> StreamingResponse:
                     persist_assistant_message(
                         thread_id=run_id,
                         provider="scribe",
+                        model=resolve_model(ProviderName(provider), False),
+                        content=content,
+                        round_number=int(event["round"]),
+                    )
+
+                yield _sse(event)
+            yield _sse({"type": "run_done"})
+            return
+
+        if mode == "council":
+            collected: dict[tuple[str, int], list[str]] = {}
+            synthesis: list[str] = []
+            synthesis_provider = ""
+            async for event in stream_council(prompt):
+                if await request.is_disconnected():
+                    return
+
+                event_type = str(event["type"])
+                if event_type == "delta":
+                    key = (str(event["provider"]), int(event["round"]))
+                    collected.setdefault(key, []).append(str(event["delta"]))
+                elif event_type == "provider_done":
+                    key = (str(event["provider"]), int(event["round"]))
+                    persist_assistant_message(
+                        thread_id=run_id,
+                        provider=key[0],
+                        model=resolve_model(ProviderName(key[0]), False),
+                        content="".join(collected.get(key, [])),
+                        round_number=key[1],
+                    )
+                elif event_type == "synthesis_delta":
+                    synthesis.append(str(event["delta"]))
+                    synthesis_provider = str(event["provider"])
+                elif event_type == "synthesis_done":
+                    provider = synthesis_provider or str(event["provider"])
+                    content = "".join(synthesis) or str(event.get("content", ""))
+                    persist_assistant_message(
+                        thread_id=run_id,
+                        provider=provider,
                         model=resolve_model(ProviderName(provider), False),
                         content=content,
                         round_number=int(event["round"]),

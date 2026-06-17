@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator
 
 from app.core.config import settings
 from app.core.types import Message, ProviderName, Role
-from app.orchestrator.compare import COMPARE_PROVIDERS, stream_compare
+from app.orchestrator.compare import COMPARE_PROVIDERS, anon_label, stream_compare
 from app.orchestrator.provider_stream import stream_provider_events
 from app.prompts.templates import (
     SUPERMIND_INDIVIDUAL,
@@ -18,7 +18,7 @@ def _format_individual_answers(
     max_chars_per_answer: int = 1800,
 ) -> str:
     return "\n\n".join(
-        f"{provider.value}:\n{_excerpt(content, max_chars_per_answer) or '[no answer]'}"
+        f"{anon_label(provider)}:\n{_excerpt(content, max_chars_per_answer) or '[no answer]'}"
         for provider, content in answers.items()
     )
 

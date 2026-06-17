@@ -13,6 +13,21 @@ COMPARE_PROVIDERS = (
 )
 
 
+def anon_label(provider: ProviderName) -> str:
+    """Stable anonymized label (Response A/B/C) for a provider.
+
+    Used only when answers are fed back INTO other models (debate critique,
+    synthesis, scribe) so peer evaluation can't be swayed by brand or
+    self-preference. UI events still carry the real provider name, so the user
+    always sees who actually said what.
+    """
+    try:
+        index = COMPARE_PROVIDERS.index(provider)
+    except ValueError:
+        index = len(COMPARE_PROVIDERS)
+    return f"Response {chr(ord('A') + index)}"
+
+
 async def _stream_provider(
     provider_name: ProviderName,
     messages: list[Message],

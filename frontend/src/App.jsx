@@ -38,6 +38,7 @@ const modeOptions = [
   { value: "compare", label: "Compare", description: "side-by-side answers" },
   { value: "supermind", label: "Super Mind", description: "unified + individual" },
   { value: "debate", label: "Debate", description: "rounds + verdict" },
+  { value: "council", label: "Council", description: "peer ranking + chairman" },
   { value: "relay", label: "Relay", description: "sequential handoff" },
   { value: "single", label: "Single", description: "one provider" },
 ];
@@ -368,6 +369,7 @@ export default function App() {
   const [pauseBetween, setPauseBetween] = useState(false);
   const [columns, setColumns] = useState(createColumns);
   const [debateRounds, setDebateRounds] = useState({});
+  const [leaderboard, setLeaderboard] = useState(null);
   const [synthesis, setSynthesis] = useState(createSynthesis);
   const [scribe, setScribe] = useState(createScribe);
   const [supermindTab, setSupermindTab] = useState("unified");
@@ -383,7 +385,7 @@ export default function App() {
   const streamRef = useRef(null);
 
   const activeProviders =
-    mode === "compare" || mode === "debate" || mode === "supermind"
+    mode === "compare" || mode === "debate" || mode === "supermind" || mode === "council"
       ? providerOrder
       : [provider];
 
@@ -402,6 +404,7 @@ export default function App() {
   function resetRunState() {
     setColumns(createColumns());
     setDebateRounds({});
+    setLeaderboard(null);
     setSynthesis(createSynthesis());
     setScribe(createScribe());
     setSupermindTab("unified");
@@ -455,7 +458,7 @@ export default function App() {
           usage: messageUsage(message),
         };
       }
-    } else if (thread.mode === "debate") {
+    } else if (thread.mode === "debate" || thread.mode === "council") {
       const roundCounts = assistantMessages.reduce((counts, message) => {
         if (message.round == null) return counts;
         counts[message.round] = (counts[message.round] || 0) + 1;
@@ -496,6 +499,7 @@ export default function App() {
 
     setColumns(nextColumns);
     setDebateRounds(nextRounds);
+    setLeaderboard(null);
     setSynthesis(nextSynthesis);
     setScribe(nextScribe);
     setSupermindTab("unified");
@@ -559,7 +563,7 @@ export default function App() {
         onDelta: (event) => {
           if (targetProvider && event.provider !== targetProvider) return;
 
-          if (run.mode === "debate") {
+          if (run.mode === "debate" || run.mode === "council") {
             setDebateRounds((current) => {
               const next = ensureRound(current, event.round);
               const column = next[event.round][event.provider];
@@ -604,6 +608,12 @@ export default function App() {
                 event.fallback_provider || current[event.provider].fallbackProvider,
             },
           }));
+        },
+        onLeaderboard: (event) => {
+          setLeaderboard({
+            standings: event.standings || [],
+            labelToProvider: event.label_to_provider || {},
+          });
         },
         onSynthesisStart: (event) => {
           setSynthesis((current) => ({ ...current, provider: event.provider }));
@@ -660,7 +670,7 @@ export default function App() {
         onFallbackStart: (event) => {
           if (targetProvider && event.provider !== targetProvider) return;
 
-          if (run.mode === "debate" && event.round <= (run.rounds || roundCount)) {
+          if ((run.mode === "debate" || run.mode === "council") && event.round <= (run.rounds || roundCount)) {
             setDebateRounds((current) => {
               const next = ensureRound(current, event.round);
               const column = next[event.round][event.provider];
@@ -1057,6 +1067,8 @@ export default function App() {
           />
         ) : mode === "debate" ? (
           <DebateView rounds={debateRounds} synthesis={synthesis} health={health} onCopy={copyText} />
+        ) : mode === "council" ? (
+          <CouncilView rounds={debateRounds} leaderboard={leaderboard} synthesis={synthesis} health={health} onCopy={copyText} />
         ) : mode === "relay" ? (
           <RelayView transcript={relayTranscript} onCopy={copyText} />
         ) : (
@@ -1595,6 +1607,66 @@ function DebateView({ rounds, synthesis, health, onCopy }) {
           <ColumnGrid providers={providerOrder} columns={rounds[round]} health={health} isLoading={false} isStreaming={false} onCopy={onCopy} />
         </section>
       ))}
+      <SynthesisCard synthesis={synthesis} onCopy={onCopy} />
+    </div>
+  );
+}
+
+function CouncilView({ rounds, leaderboard, synthesis, health, onCopy }) {
+  const roundKeys = Object.keys(rounds).map(Number).sort((a, b) => a - b);
+  const roundTitle = (round) =>
+    round === 1 ? "First answers" : round === 2 ? "Peer review (blind)" : `Round ${round}`;
+  const standings = leaderboard?.standings || [];
+
+  return (
+    <div className="space-y-5">
+      <div className="panel flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-300">
+            Council
+          </h2>
+          <p className="mt-1 text-sm text-neutral-500">
+            Models answer, then rank each other blind. The chairman synthesizes the verdict.
+          </p>
+        </div>
+      </div>
+
+      {roundKeys.map((round) => (
+        <section key={round} className="space-y-3">
+          <div className="flex items-center gap-3">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
+              {roundTitle(round)}
+            </h3>
+            <div className="h-px flex-1 bg-neutral-800" />
+          </div>
+          <ColumnGrid providers={providerOrder} columns={rounds[round]} health={health} isLoading={false} isStreaming={false} onCopy={onCopy} />
+        </section>
+      ))}
+
+      {standings.length > 0 && (
+        <section className="panel p-4">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-neutral-300">
+            Peer leaderboard
+          </h3>
+          <p className="mt-1 text-xs text-neutral-500">
+            Lower average rank is better. Reviewers scored answers blind, so a model could not favor its own.
+          </p>
+          <ol className="mt-3 space-y-2">
+            {standings.map((row, index) => (
+              <li key={row.provider} className="flex items-center justify-between gap-3 rounded-md border border-neutral-800 bg-neutral-900/60 px-3 py-2">
+                <span className="flex items-center gap-2 text-sm text-neutral-200">
+                  <span className="text-xs text-neutral-500">#{index + 1}</span>
+                  {providerLabels[row.provider] || row.provider}
+                </span>
+                <span className="text-xs text-neutral-400">
+                  avg {row.average_rank} · {row.votes} {row.votes === 1 ? "vote" : "votes"}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+
       <SynthesisCard synthesis={synthesis} onCopy={onCopy} />
     </div>
   );

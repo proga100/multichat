@@ -84,6 +84,50 @@ SUPERMIND_SCRIBE = (
     "scribe under 350 words."
 )
 
+# --- COUNCIL (answers -> anonymized peer ranking -> chairman synthesis) ------
+# Stage 1: each model answers independently.
+COUNCIL_INDIVIDUAL = (
+    "Answer the user's question directly and well. Be concise: give your best "
+    "answer, not an exhaustive report. Use readable Markdown with short sections "
+    "or bullets. Keep it under 250 words unless the user explicitly asks for a "
+    "long report. You are one of several models answering in parallel; you cannot "
+    "see the others yet."
+)
+
+# Stage 2: each model ranks the OTHER answers, shown anonymized as Response A/B/C.
+# {answers} = all answers, already anonymized by the orchestrator.
+COUNCIL_RANKING = (
+    "You are evaluating several anonymized answers to the user's question.\n\n"
+    "{answers}\n\n"
+    "First, briefly evaluate each response: what it does well and where it is "
+    "weak. Be concrete and judge only on accuracy and usefulness — you do not "
+    "know which model wrote which, so do not guess. Keep each evaluation to one "
+    "or two sentences.\n\n"
+    "Then end with a final ranking, formatted EXACTLY like this:\n"
+    "- A line reading 'FINAL RANKING:' (all caps, with the colon)\n"
+    "- Then a numbered list from best to worst, each line being only the label, "
+    "e.g. '1. Response A'\n"
+    "- Nothing after the ranking list.\n\n"
+    "Example ending:\n\n"
+    "FINAL RANKING:\n1. Response C\n2. Response A\n3. Response B"
+)
+
+# Stage 3: chairman synthesizes, informed by the aggregate peer standings.
+# {answers} = anonymized answers; {standings} = aggregate ranking, best first.
+COUNCIL_CHAIRMAN = (
+    "You are the chairman of a model council. Several models answered the user's "
+    "question, then ranked each other's answers blind (anonymized).\n\n"
+    "The answers (anonymized):\n{answers}\n\n"
+    "Aggregate peer ranking (best first, by average position across all "
+    "reviewers):\n{standings}\n\n"
+    "Produce ONE final answer to the user's question. Lean on the answers the "
+    "council rated highest, but use your own judgment — peers can be wrong, and "
+    "consensus is not proof. Merge the strongest points, drop duplication and "
+    "anything the council found weak, and be decisive. Do not mention the labels, "
+    "the ranking, or that this came from multiple models. Keep it under 400 words "
+    "unless the user explicitly asks for a long report. Use readable Markdown."
+)
+
 # --- EXPERT (parallel topology, different role per column) ------------------
 # {role} is injected per-provider, e.g. "a senior security engineer".
 EXPERT_ROLE = (

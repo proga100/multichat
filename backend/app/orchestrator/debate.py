@@ -5,7 +5,7 @@ from collections.abc import AsyncIterator
 
 from app.core.config import settings
 from app.core.types import Message, ProviderName, Role
-from app.orchestrator.compare import COMPARE_PROVIDERS
+from app.orchestrator.compare import COMPARE_PROVIDERS, anon_label
 from app.orchestrator.provider_stream import stream_provider_events
 from app.prompts.templates import DEBATE_CRITIQUE, DEBATE_ROUND1, DEBATE_SYNTHESIS
 
@@ -31,7 +31,7 @@ def _format_answers(
         if provider == exclude:
             continue
         formatted = _excerpt(content, max_chars_per_answer) if content else "[no answer]"
-        blocks.append(f"{provider.value}:\n{formatted}")
+        blocks.append(f"{anon_label(provider)}:\n{formatted}")
     return "\n\n".join(blocks)
 
 
